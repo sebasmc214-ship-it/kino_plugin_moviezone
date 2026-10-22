@@ -1,0 +1,32 @@
+{
+  "id": "moviezone",
+  "name": "MovieZone",
+  "version": "0.1.0",
+  "apiVersion": 5,
+  "entry": "plugin.js",
+  "icon": "icon.png",
+  "description": "Películas, series y anime de todos los géneros en español",
+  "hosts": [
+    "lamovie.org",
+    "vimeos.net",
+    "*.vimeos.net",
+    "vimeos.zip",
+    "*.vimeos.zip",
+    "videoapp.zip",
+    "*.videoapp.zip",
+    "image.tmdb.org"
+  ],
+  "streamHosts": "any",
+  "capabilities": [
+    "search",
+    "home",
+    "browse",
+    "episodes",
+    "resolve",
+    "download"
+  ],
+  "signature": {
+    "authorKey": "c854d228f76e82903e20604bd7fd5ca35b0e7d9eb8dacbd138bd209533c7170c",
+    "value": "6080dacd93626b2c9fe431e2122ac5767ab23ef38294885204ff2a269c7e6e49306b1da6ca0dffbec670532808d94e4fccb2e7ffabbd56e567808cfca309310d"
+  }
+}

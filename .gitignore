@@ -1,0 +1,13 @@
+# Claves privadas del autor (NUNCA deben subirse a GitHub)
+*.pem
+
+# Archivos temporales locales del SDK de Kino
+.kino-storage.json
+.kino-cookies.json
+.kino-secrets.json
+sdk/config.json
+
+# Entorno y dependencias
+node_modules/
+.DS_Store
+Thumbs.db
