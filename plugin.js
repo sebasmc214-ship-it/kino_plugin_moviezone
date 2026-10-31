@@ -728,8 +728,10 @@ export async function browse(ref, cursor) {
   }
 
   // 2. Explorar lista de Actores
-  if (ref === "cast:latest") {
-    const url = `${BASE_API}/listing/tax/cast?page=${page}&orderBy=latest&order=desc&postsPerPage=20`;
+  if (ref.startsWith("cast:")) {
+    const castPage = ref === "cast:latest" ? page : (parseInt(ref.replace("cast:p", ""), 10) || page);
+    const effectivePage = cursor ? page : castPage;
+    const url = `${BASE_API}/listing/tax/cast?page=${effectivePage}&orderBy=latest&order=desc&postsPerPage=20`;
     const r = await kino.fetch(url);
     if (!r.ok) throw kino.error("unavailable", `Error al cargar actores (${r.status})`);
     const data = r.json();
@@ -738,7 +740,7 @@ export async function browse(ref, cursor) {
     const pagination = data && data.data && data.data.pagination;
     return {
       items,
-      next: pagination && pagination.next_page_url ? String(page + 1) : undefined
+      next: pagination && pagination.next_page_url ? String(effectivePage + 1) : undefined
     };
   }
 
@@ -777,7 +779,13 @@ export async function browse(ref, cursor) {
   } else if (ref.startsWith("wwe")) {
     url = `${BASE_API}/listing/wwe?page=${page}&orderBy=ID&order=desc&postType=wwe&postsPerPage=20`;
   } else if (ref.startsWith("collections")) {
-    url = `${BASE_API}/listing/collections?page=${page}&orderBy=ID&order=desc&postType=collections&postsPerPage=20`;
+    const colPage = ref === "collections:latest" ? page : (parseInt(ref.replace("collections:p", ""), 10) || page);
+    const effectivePage = cursor ? page : colPage;
+    url = `${BASE_API}/listing/collections?page=${effectivePage}&orderBy=ID&order=desc&postType=collections&postsPerPage=20`;
+  } else if (ref.startsWith("animes")) {
+    const animePage = ref === "animes:latest" ? page : (parseInt(ref.replace("animes:page", ""), 10) || page);
+    const effectivePage = cursor ? page : animePage;
+    url = `${BASE_API}/listing/animes?page=${effectivePage}&orderBy=ID&order=desc&postType=animes&postsPerPage=20`;
   } else if (ref.startsWith("tvshows")) {
     url = `${BASE_API}/listing/tvshows?page=${page}&orderBy=ID&order=desc&postType=tvshows&postsPerPage=20`;
   } else if (ref.startsWith("animes")) {
