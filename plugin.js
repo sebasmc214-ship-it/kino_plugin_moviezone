@@ -512,40 +512,54 @@ export async function episodes(ref) {
     const colId = ref.split(":")[1];
     if (!colId) throw kino.error("not_found", "Colección no encontrada");
 
-    // Endpoint directo para obtener todas las películas de la colección con nombre real y póster oficial
+    // Endpoint directo para obtener todas las películas/series de la colección con nombre real y póster oficial
     const listingRes = await kino.fetch(`${BASE_API}/collection/${encodeURIComponent(colId)}/listing`);
     if (listingRes.ok) {
       const lData = listingRes.json();
-      const rawMovies = lData && lData.data && Array.isArray(lData.data.posts) ? lData.data.posts : [];
-      if (rawMovies.length > 0) {
-        const episodesList = rawMovies.map((m, idx) => {
+      const rawPosts = lData && lData.data && Array.isArray(lData.data.posts) ? lData.data.posts : [];
+      if (rawPosts.length > 0) {
+        const episodesList = rawPosts.map((m, idx) => {
           let still;
           if (m.images && m.images.poster) {
             still = m.images.poster.startsWith("http")
               ? m.images.poster
               : `${UPLOADS_BASE}${m.images.poster}`;
           }
+          const itemType = m.type || (m.season_number ? "tvshows" : "movies");
           return {
             season: 1,
             number: idx + 1,
-            ref: `movies:${m._id}`,
-            title: (m.title || `Película ${idx + 1}`).replace(/\s*\(\d{4}\)\s*$/, "").trim(),
+            ref: `${itemType}:${m._id}`,
+            title: (m.title || `Título ${idx + 1}`).replace(/\s*\(\d{4}\)\s*$/, "").trim(),
             overview: m.overview || undefined,
             still
           };
         });
 
+        // Crear selector de temporadas/títulos con las series incluidas para navegar directamente
+        const seasonsList = [
+          {
+            id: `col-${colId}-s1`,
+            ref: `collection:${colId}`,
+            title: "Títulos de la colección",
+            number: 1,
+            current: true
+          }
+        ];
+
+        for (const item of rawPosts) {
+          if (item.type === "tvshows" || item.type === "animes" || item.type === "novels") {
+            seasonsList.push({
+              id: `series-${item._id}`,
+              ref: `${item.type}:${item._id}`,
+              title: (item.title || "Serie").replace(/\s*\(\d{4}\)\s*$/, "").trim()
+            });
+          }
+        }
+
         return {
           episodes: episodesList,
-          seasons: [
-            {
-              id: `col-${colId}-s1`,
-              ref: `collection:${colId}`,
-              title: "Películas de la saga",
-              number: 1,
-              current: true
-            }
-          ]
+          seasons: seasonsList
         };
       }
     }
@@ -705,8 +719,27 @@ export async function resolve(ref) {
   await null;
 
   const parts = ref.split(":");
-  const postId = parts.pop();
+  let postId = parts.pop();
+  const type = parts[0] || "";
   if (!postId) throw kino.error("not_found", "ID de contenido no válido");
+
+  // Si se solicita reproducir una serie directamente (ej. desde una colección de series),
+  // se obtiene automáticamente su primer episodio
+  if (type === "tvshows" || type === "animes" || type === "novels") {
+    try {
+      const epUrl = `${BASE_API}/single/episodes/list?_id=${encodeURIComponent(postId)}&season=1&page=1&postsPerPage=1`;
+      const epRes = await kino.fetch(epUrl);
+      if (epRes.ok) {
+        const epData = epRes.json();
+        const firstEp = epData && epData.data && Array.isArray(epData.data.posts) ? epData.data.posts[0] : null;
+        if (firstEp && firstEp._id) {
+          postId = String(firstEp._id);
+        }
+      }
+    } catch (_) {
+      // Intentar reproducir con postId original si falla la llamada
+    }
+  }
 
   const playerUrl = `${BASE_API}/player?postId=${encodeURIComponent(postId)}&demo=0`;
   const playerRes = await kino.fetch(playerUrl);
