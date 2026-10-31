@@ -1,6 +1,8 @@
 {
   "id": "moviezone",
   "name": "MovieZone",
+  "author": "Sebasdev",
+  "creator": "Sebasdev",
   "version": "0.2.3",
   "apiVersion": 5,
   "entry": "plugin.js",
