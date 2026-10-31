@@ -5,6 +5,22 @@ const BASE_API = "https://lamovie.org/wp-api/v1";
 const UPLOADS_BASE = "https://lamovie.org/wp-content/uploads";
 const BRAND_BANNER = "https://raw.githubusercontent.com/sebasmc214-ship-it/kino_plugin_moviezone/main/banner.jpg";
 
+// Categorías temáticas destacadas con su term_id de LaMovie
+const FEATURED_GENRES = [
+  { id: 32, name: "Acción", slug: "accion", genreTag: "accion" },
+  { id: 18, name: "Comedia", slug: "comedia", genreTag: "comedia" },
+  { id: 17, name: "Drama", slug: "drama", genreTag: "drama" },
+  { id: 33, name: "Suspenso", slug: "suspense", genreTag: "suspenso" },
+  { id: 96, name: "Terror", slug: "terror", genreTag: "terror" },
+  { id: 520, name: "Animación", slug: "animacion", genreTag: "animacion" },
+  { id: 131, name: "Ciencia ficción", slug: "ciencia-ficcion", genreTag: "ciencia-ficcion" },
+  { id: 130, name: "Aventura", slug: "aventura", genreTag: "aventura" },
+  { id: 115, name: "Romance", slug: "romance", genreTag: "romance" },
+  { id: 180, name: "Crimen", slug: "crimen", genreTag: "crimen" },
+  { id: 398, name: "Familia", slug: "familia", genreTag: "infantil" },
+  { id: 229, name: "Fantasía", slug: "fantasia", genreTag: "fantasia" }
+];
+
 const GENRE_MAP = {
   17: "drama",
   18: "comedia",
@@ -213,6 +229,11 @@ export async function search(query) {
 export async function home() {
   await null;
 
+  const genreFetches = FEATURED_GENRES.map(g => {
+    const f = encodeURIComponent(JSON.stringify({ genres: [g.id] }));
+    return kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=20&filter=${f}`).catch(() => null);
+  });
+
   const [
     upcomingRes,
     popularMoviesRes,
@@ -221,21 +242,23 @@ export async function home() {
     novelsRes,
     animesRes,
     collectionsRes,
-    actorsRes
+    actorsRes,
+    ...genreResponses
   ] = await Promise.all([
-    kino.fetch(`${BASE_API}/listing/up`).catch(() => null),
+    kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=35&filter=${encodeURIComponent(JSON.stringify({ years: [74006, 4] }))}`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=views&order=desc&postType=movies&postsPerPage=20`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=35`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/tvshows?page=1&orderBy=ID&order=desc&postType=tvshows&postsPerPage=20`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/novels?page=1&orderBy=ID&order=desc&postType=novels&postsPerPage=20`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=ID&order=desc&postType=animes&postsPerPage=20`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/collections?page=1&orderBy=ID&order=desc&postType=collections&postsPerPage=20`).catch(() => null),
-    kino.fetch(`${BASE_API}/listing/tax/cast?page=1&orderBy=latest&order=desc&postsPerPage=20`).catch(() => null)
+    kino.fetch(`${BASE_API}/listing/tax/cast?page=1&orderBy=latest&order=desc&postsPerPage=20`).catch(() => null),
+    ...genreFetches
   ]);
 
   const rows = [];
 
-  // 1. Estrenos destacados (combina títulos de cartelera /up con últimos estrenos agregados)
+  // 1. Estrenos destacados (películas estrenadas recientemente en 2026/2025)
   const premierItemsMap = new Map();
   if (upcomingRes && upcomingRes.ok) {
     const data = upcomingRes.json();
@@ -243,15 +266,6 @@ export async function home() {
     for (const post of posts) {
       const item = toItem(post);
       if (item && !premierItemsMap.has(item.id)) premierItemsMap.set(item.id, item);
-    }
-  }
-  if (latestMoviesRes && latestMoviesRes.ok) {
-    const data = latestMoviesRes.json();
-    const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
-    for (const post of posts) {
-      const item = toItem(post);
-      if (item && !premierItemsMap.has(item.id)) premierItemsMap.set(item.id, item);
-      if (premierItemsMap.size >= 30) break;
     }
   }
   const premierItems = Array.from(premierItemsMap.values());
@@ -380,6 +394,26 @@ export async function home() {
     }
   }
 
+  // 9. Categorías temáticas (Acción, Comedia, Drama, Suspenso, Terror, Animación, etc.)
+  for (let i = 0; i < FEATURED_GENRES.length; i++) {
+    const genreInfo = FEATURED_GENRES[i];
+    const res = genreResponses[i];
+    if (res && res.ok) {
+      const data = res.json();
+      const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+      const items = posts.map(toItem).filter(Boolean);
+      if (items.length > 0) {
+        rows.push({
+          id: `categoria-${genreInfo.slug}`,
+          title: genreInfo.name,
+          ref: `genre:${genreInfo.id}`,
+          genre: genreInfo.genreTag || "peliculas",
+          items
+        });
+      }
+    }
+  }
+
   return rows;
 }
 
@@ -424,10 +458,28 @@ export async function browse(ref, cursor) {
     };
   }
 
-  // 3. Secciones generales del catálogo
+  // 3. Explorar películas de una Categoría / Género específico
+  if (ref.startsWith("genre:")) {
+    const genreId = parseInt(ref.split(":")[1], 10);
+    if (!genreId) throw kino.error("not_found", "Categoría no encontrada");
+    const filterParam = encodeURIComponent(JSON.stringify({ genres: [genreId] }));
+    const url = `${BASE_API}/listing/movies?page=${page}&orderBy=ID&order=desc&postType=movies&postsPerPage=20&filter=${filterParam}`;
+    const r = await kino.fetch(url);
+    if (!r.ok) throw kino.error("unavailable", `Error al cargar categoría (${r.status})`);
+    const data = r.json();
+    const rawPosts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+    const items = rawPosts.map(toItem).filter(Boolean);
+    const pagination = data && data.data && data.data.pagination;
+    return {
+      items,
+      next: pagination && pagination.next_page_url ? String(page + 1) : undefined
+    };
+  }
+
+  // 4. Secciones generales del catálogo
   let url;
   if (ref === "movies:upcoming") {
-    url = `${BASE_API}/listing/movies?page=${page}&orderBy=ID&order=desc&postType=movies&postsPerPage=25`;
+    url = `${BASE_API}/listing/movies?page=${page}&orderBy=ID&order=desc&postType=movies&postsPerPage=25&filter=${encodeURIComponent(JSON.stringify({ years: [74006, 4] }))}`;
   } else if (ref === "movies:popular") {
     url = `${BASE_API}/listing/movies?page=${page}&orderBy=views&order=desc&postType=movies&postsPerPage=20`;
   } else if (ref.startsWith("novels")) {
@@ -522,7 +574,37 @@ export async function episodes(ref) {
       const seriesType = parts[2];
       const seriesId = parts[3];
       const targetSeason = parts[4] ? parseInt(parts[4], 10) : 1;
-      return await episodes(`${seriesType}:${seriesId}:${targetSeason}`);
+      
+      const seriesEpResult = await episodes(`${seriesType}:${seriesId}:${targetSeason}`);
+
+      // Mantener siempre accesible la opción de volver a la lista general de la colección
+      // y conmutar entre las series de la colección sin salirse a la pantalla anterior
+      const combinedSeasons = [
+        {
+          id: `col-${colId}-all`,
+          ref: `collection:${colId}`,
+          title: "↩ Elegir otra serie / Volver a la lista",
+          number: 0,
+          current: false
+        }
+      ];
+
+      if (seriesEpResult && Array.isArray(seriesEpResult.seasons)) {
+        for (const s of seriesEpResult.seasons) {
+          combinedSeasons.push({
+            id: s.id,
+            ref: `collection:${colId}:${seriesType}:${seriesId}:${s.number}`,
+            title: s.title,
+            number: s.number,
+            current: s.current
+          });
+        }
+      }
+
+      return {
+        episodes: seriesEpResult.episodes,
+        seasons: combinedSeasons
+      };
     }
 
     // Endpoint directo para obtener todas las películas/series de la colección con nombre real y póster oficial
@@ -549,12 +631,15 @@ export async function episodes(ref) {
           };
         });
 
+        const hasSeries = rawPosts.some(item => item.type === "tvshows" || item.type === "animes" || item.type === "novels");
+        const listTitle = hasSeries ? "Elegir serie / Títulos" : `${rawPosts.length} Películas`;
+
         // Crear selector de temporadas/títulos con las series incluidas para navegar directamente
         const seasonsList = [
           {
             id: `col-${colId}-s1`,
             ref: `collection:${colId}`,
-            title: "Títulos de la colección",
+            title: listTitle,
             number: 1,
             current: true
           }
@@ -565,7 +650,7 @@ export async function episodes(ref) {
             seasonsList.push({
               id: `series-${item._id}`,
               ref: `collection:${colId}:${item.type}:${item._id}`,
-              title: (item.title || "Serie").replace(/\s*\(\d{4}\)\s*$/, "").trim()
+              title: `📺 ${(item.title || "Serie").replace(/\s*\(\d{4}\)\s*$/, "").trim()}`
             });
           }
         }
