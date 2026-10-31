@@ -418,6 +418,185 @@ export async function home() {
 }
 
 /**
+ * Sección dedicada de MovieZone para la barra lateral y "Secciones de los plugins".
+ * Organizada con pestañas: Todo, Películas, Series, Anime, Colecciones y Actores.
+ */
+export async function section({ tab } = {}) {
+  await null;
+
+  const tabs = [
+    { id: "todo", label: "Catálogo completo" },
+    { id: "peliculas", label: "Películas" },
+    { id: "series", label: "Series y Novelas" },
+    { id: "anime", label: "Anime" },
+    { id: "colecciones", label: "Sagas y Colecciones" },
+    { id: "actores", label: "Actores" }
+  ];
+
+  const chosen = tabs.some(t => t.id === tab) ? tab : "todo";
+
+  if (chosen === "todo") {
+    const homeRows = await home();
+    return {
+      tabs,
+      tab: chosen,
+      hero: {
+        title: "MovieZone",
+        text: "Películas de estreno, series completas, novelas, anime y sagas en español."
+      },
+      rows: homeRows
+    };
+  }
+
+  if (chosen === "peliculas") {
+    const genreFetches = FEATURED_GENRES.map(g => {
+      const f = encodeURIComponent(JSON.stringify({ genres: [g.id] }));
+      return kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=20&filter=${f}`).catch(() => null);
+    });
+
+    const [upcomingRes, popularRes, latestRes, ...genreResList] = await Promise.all([
+      kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=35&filter=${encodeURIComponent(JSON.stringify({ years: [74006, 4] }))}`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=views&order=desc&postType=movies&postsPerPage=20`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=35`).catch(() => null),
+      ...genreFetches
+    ]);
+
+    const pRows = [];
+
+    if (upcomingRes && upcomingRes.ok) {
+      const d = upcomingRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) pRows.push({ id: "sec-estrenos", title: "Estrenos 2025/2026", ref: "movies:upcoming", genre: "peliculas", items: it });
+    }
+    if (popularRes && popularRes.ok) {
+      const d = popularRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) pRows.push({ id: "sec-populares", title: "Películas más vistas", ref: "movies:popular", genre: "peliculas", items: it });
+    }
+    if (latestRes && latestRes.ok) {
+      const d = latestRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) pRows.push({ id: "sec-recientes", title: "Películas recién agregadas", ref: "movies:latest", genre: "peliculas", items: it });
+    }
+
+    for (let i = 0; i < FEATURED_GENRES.length; i++) {
+      const g = FEATURED_GENRES[i];
+      const r = genreResList[i];
+      if (r && r.ok) {
+        const d = r.json();
+        const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+        const it = p.map(toItem).filter(Boolean);
+        if (it.length > 0) pRows.push({ id: `sec-cat-${g.slug}`, title: g.name, ref: `genre:${g.id}`, genre: g.genreTag || "peliculas", items: it });
+      }
+    }
+
+    return {
+      tabs,
+      tab: chosen,
+      hero: {
+        title: "Películas en MovieZone",
+        text: "Explora los últimos estrenos y las mejores categorías de cine."
+      },
+      rows: pRows
+    };
+  }
+
+  if (chosen === "series") {
+    const [seriesRes, novelsRes] = await Promise.all([
+      kino.fetch(`${BASE_API}/listing/tvshows?page=1&orderBy=ID&order=desc&postType=tvshows&postsPerPage=25`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/novels?page=1&orderBy=ID&order=desc&postType=novels&postsPerPage=25`).catch(() => null)
+    ]);
+    const sRows = [];
+    if (seriesRes && seriesRes.ok) {
+      const d = seriesRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) sRows.push({ id: "sec-series", title: "Series", ref: "tvshows:latest", genre: "series", items: it });
+    }
+    if (novelsRes && novelsRes.ok) {
+      const d = novelsRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) sRows.push({ id: "sec-novelas", title: "Telenovelas", ref: "novels:latest", genre: "series", items: it });
+    }
+    return {
+      tabs,
+      tab: chosen,
+      hero: {
+        title: "Series y Telenovelas",
+        text: "Temporadas completas en español."
+      },
+      rows: sRows
+    };
+  }
+
+  if (chosen === "anime") {
+    const animesRes = await kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=ID&order=desc&postType=animes&postsPerPage=30`).catch(() => null);
+    const aRows = [];
+    if (animesRes && animesRes.ok) {
+      const d = animesRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) aRows.push({ id: "sec-animes", title: "Anime en español", ref: "animes:latest", genre: "anime", items: it });
+    }
+    return {
+      tabs,
+      tab: chosen,
+      hero: {
+        title: "Anime en español",
+        text: "Disfruta tus animes favoritos con audio y subtítulos en español."
+      },
+      rows: aRows
+    };
+  }
+
+  if (chosen === "colecciones") {
+    const colRes = await kino.fetch(`${BASE_API}/listing/collections?page=1&orderBy=ID&order=desc&postType=collections&postsPerPage=30`).catch(() => null);
+    const cRows = [];
+    if (colRes && colRes.ok) {
+      const d = colRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) cRows.push({ id: "sec-colecciones", title: "Sagas y Colecciones", ref: "collections:latest", genre: "entretenimiento", items: it });
+    }
+    return {
+      tabs,
+      tab: chosen,
+      hero: {
+        title: "Sagas y Colecciones",
+        text: "Colecciones de películas y sagas ordenadas cronológicamente."
+      },
+      rows: cRows
+    };
+  }
+
+  if (chosen === "actores") {
+    const actorsRes = await kino.fetch(`${BASE_API}/listing/tax/cast?page=1&orderBy=latest&order=desc&postsPerPage=30`).catch(() => null);
+    const actRows = [];
+    if (actorsRes && actorsRes.ok) {
+      const d = actorsRes.json();
+      const p = d && d.data && Array.isArray(d.data.items) ? d.data.items : [];
+      const it = p.map(toActorItem).filter(Boolean);
+      if (it.length > 0) actRows.push({ id: "sec-actores", title: "Actores y Actrices", ref: "cast:latest", genre: "otros", items: it });
+    }
+    return {
+      tabs,
+      tab: chosen,
+      hero: {
+        title: "Actores y Actrices",
+        text: "Explora la filmografía de tus estrellas favoritas."
+      },
+      rows: actRows
+    };
+  }
+
+  return { tabs, tab: chosen, rows: [] };
+}
+
+/**
  * Paginación de "Ver más" para cada sección del catálogo.
  */
 export async function browse(ref, cursor) {

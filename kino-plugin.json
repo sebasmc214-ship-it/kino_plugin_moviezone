@@ -2,12 +2,15 @@
   "id": "moviezone",
   "name": "MovieZone",
   "author": "Sebasdev",
-  "creator": "Sebasdev",
-  "version": "0.2.9",
-  "apiVersion": 5,
+  "creator": "sebasdev",
+  "version": "0.3.0",
+  "apiVersion": 6,
   "entry": "plugin.js",
   "icon": "icon.png",
-  "description": "Películas, series, telenovelas, anime, sagas y actores en español",
+  "section": {
+    "label": "MovieZone"
+  },
+  "description": "Películas, series, telenovelas, anime, colecciones y actores/actrices en español",
   "hosts": [
     "lamovie.org",
     "vimeos.net",
@@ -30,6 +33,6 @@
   ],
   "signature": {
     "authorKey": "c854d228f76e82903e20604bd7fd5ca35b0e7d9eb8dacbd138bd209533c7170c",
-    "value": "741fd25ab2aa978eb67b60e3f3eaacf560b10333bef80844d8f513371d89254a66e2216ec82431bc49405f0cf59325f9815cd1f802618560ae8cb7e31ae9ba0b"
+    "value": "5e969bd6c81e27b69ba13dcfa89c2e429ace5c9f2f74a4a04a2dbfd7d2c365b49c5c5ea5480f78f86748c528fa9e964fe7c2f9fcf5212aecbb235326c3902308"
   }
 }
