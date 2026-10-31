@@ -512,22 +512,54 @@ export async function episodes(ref) {
     const colId = ref.split(":")[1];
     if (!colId) throw kino.error("not_found", "Colección no encontrada");
 
-    const colRes = await kino.fetch(`${BASE_API}/listing/collections?page=1&orderBy=ID&order=desc&postType=collections&postsPerPage=100`);
-    if (!colRes.ok) throw kino.error("unavailable", "No se pudo cargar la saga");
-    const colData = colRes.json();
-    const allCols = colData && colData.data && Array.isArray(colData.data.posts) ? colData.data.posts : [];
-    const matchCol = allCols.find(c => String(c._id) === String(colId));
+    // Consultar las páginas de colecciones en paralelo para localizar la saga en cualquier página
+    const colPages = await Promise.all([
+      kino.fetch(`${BASE_API}/listing/collections?page=1&orderBy=ID&order=desc&postType=collections&postsPerPage=30`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/collections?page=2&orderBy=ID&order=desc&postType=collections&postsPerPage=30`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/collections?page=3&orderBy=ID&order=desc&postType=collections&postsPerPage=30`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/collections?page=4&orderBy=ID&order=desc&postType=collections&postsPerPage=30`).catch(() => null)
+    ]);
 
-    if (!matchCol || !Array.isArray(matchCol.posts) || matchCol.posts.length === 0) {
-      throw kino.error("not_found", "No hay películas en esta saga");
+    let matchCol = null;
+    for (const res of colPages) {
+      if (res && res.ok) {
+        const cData = res.json();
+        const posts = cData && cData.data && Array.isArray(cData.data.posts) ? cData.data.posts : [];
+        const found = posts.find(c => String(c._id) === String(colId));
+        if (found) {
+          matchCol = found;
+          break;
+        }
+      }
     }
 
-    const episodesList = matchCol.posts.map((pid, idx) => ({
-      season: 1,
-      number: idx + 1,
-      ref: `movies:${pid}`,
-      title: `Parte ${idx + 1}`
-    }));
+    if (!matchCol || !Array.isArray(matchCol.posts) || matchCol.posts.length === 0) {
+      throw kino.error("not_found", "No se encontraron títulos en esta saga");
+    }
+
+    // Extraer imágenes de las galerías para que cada película de la saga tenga su carátula
+    const allStills = [];
+    if (Array.isArray(matchCol.galleries)) {
+      for (const g of matchCol.galleries) {
+        if (typeof g === "string") {
+          for (const line of g.split("\n")) {
+            const clean = line.trim();
+            if (clean) allStills.push(clean.startsWith("http") ? clean : `https://image.tmdb.org/t/p/w500${clean}`);
+          }
+        }
+      }
+    }
+
+    const episodesList = matchCol.posts.map((pid, idx) => {
+      const still = allStills[idx] || undefined;
+      return {
+        season: 1,
+        number: idx + 1,
+        ref: `movies:${pid}`,
+        title: `Película #${idx + 1}`,
+        still
+      };
+    });
 
     return {
       episodes: episodesList,
