@@ -224,7 +224,7 @@ export async function home() {
   ] = await Promise.all([
     kino.fetch(`${BASE_API}/listing/up`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=views&order=desc&postType=movies&postsPerPage=20`).catch(() => null),
-    kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=20`).catch(() => null),
+    kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=35`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/tvshows?page=1&orderBy=ID&order=desc&postType=tvshows&postsPerPage=20`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/novels?page=1&orderBy=ID&order=desc&postType=novels&postsPerPage=20`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=ID&order=desc&postType=animes&postsPerPage=20`).catch(() => null),
@@ -234,20 +234,34 @@ export async function home() {
 
   const rows = [];
 
-  // 1. Estrenos destacados (cargados desde /listing/up para garantizar contenido activo)
+  // 1. Estrenos destacados (combina títulos de cartelera /up con últimos estrenos agregados)
+  const premierItemsMap = new Map();
   if (upcomingRes && upcomingRes.ok) {
     const data = upcomingRes.json();
     const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
-    const items = posts.map(toItem).filter(Boolean);
-    if (items.length > 0) {
-      rows.push({
-        id: "estrenos",
-        title: "Estrenos destacados",
-        ref: "movies:upcoming",
-        genre: "peliculas",
-        items
-      });
+    for (const post of posts) {
+      const item = toItem(post);
+      if (item && !premierItemsMap.has(item.id)) premierItemsMap.set(item.id, item);
     }
+  }
+  if (latestMoviesRes && latestMoviesRes.ok) {
+    const data = latestMoviesRes.json();
+    const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+    for (const post of posts) {
+      const item = toItem(post);
+      if (item && !premierItemsMap.has(item.id)) premierItemsMap.set(item.id, item);
+      if (premierItemsMap.size >= 30) break;
+    }
+  }
+  const premierItems = Array.from(premierItemsMap.values());
+  if (premierItems.length > 0) {
+    rows.push({
+      id: "estrenos",
+      title: "Estrenos destacados",
+      ref: "movies:upcoming",
+      genre: "peliculas",
+      items: premierItems
+    });
   }
 
   // 2. Películas (renombrado según solicitud)
@@ -409,7 +423,7 @@ export async function browse(ref, cursor) {
   // 3. Secciones generales del catálogo
   let url;
   if (ref === "movies:upcoming") {
-    url = `${BASE_API}/listing/up`;
+    url = `${BASE_API}/listing/movies?page=${page}&orderBy=ID&order=desc&postType=movies&postsPerPage=25`;
   } else if (ref === "movies:popular") {
     url = `${BASE_API}/listing/movies?page=${page}&orderBy=views&order=desc&postType=movies&postsPerPage=20`;
   } else if (ref.startsWith("novels")) {
