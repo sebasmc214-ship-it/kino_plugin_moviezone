@@ -512,7 +512,45 @@ export async function episodes(ref) {
     const colId = ref.split(":")[1];
     if (!colId) throw kino.error("not_found", "Colección no encontrada");
 
-    // Consultar las páginas de colecciones en paralelo para localizar la saga en cualquier página
+    // Endpoint directo para obtener todas las películas de la colección con nombre real y póster oficial
+    const listingRes = await kino.fetch(`${BASE_API}/collection/${encodeURIComponent(colId)}/listing`);
+    if (listingRes.ok) {
+      const lData = listingRes.json();
+      const rawMovies = lData && lData.data && Array.isArray(lData.data.posts) ? lData.data.posts : [];
+      if (rawMovies.length > 0) {
+        const episodesList = rawMovies.map((m, idx) => {
+          let still;
+          if (m.images && m.images.poster) {
+            still = m.images.poster.startsWith("http")
+              ? m.images.poster
+              : `${UPLOADS_BASE}${m.images.poster}`;
+          }
+          return {
+            season: 1,
+            number: idx + 1,
+            ref: `movies:${m._id}`,
+            title: (m.title || `Película ${idx + 1}`).replace(/\s*\(\d{4}\)\s*$/, "").trim(),
+            overview: m.overview || undefined,
+            still
+          };
+        });
+
+        return {
+          episodes: episodesList,
+          seasons: [
+            {
+              id: `col-${colId}-s1`,
+              ref: `collection:${colId}`,
+              title: "Películas de la saga",
+              number: 1,
+              current: true
+            }
+          ]
+        };
+      }
+    }
+
+    // Fallback de respaldo por páginas de colecciones si el endpoint directo no responde
     const colPages = await Promise.all([
       kino.fetch(`${BASE_API}/listing/collections?page=1&orderBy=ID&order=desc&postType=collections&postsPerPage=30`).catch(() => null),
       kino.fetch(`${BASE_API}/listing/collections?page=2&orderBy=ID&order=desc&postType=collections&postsPerPage=30`).catch(() => null),
@@ -537,7 +575,6 @@ export async function episodes(ref) {
       throw kino.error("not_found", "No se encontraron títulos en esta saga");
     }
 
-    // Extraer imágenes de las galerías para que cada película de la saga tenga su carátula
     const allStills = [];
     if (Array.isArray(matchCol.galleries)) {
       for (const g of matchCol.galleries) {
@@ -550,16 +587,13 @@ export async function episodes(ref) {
       }
     }
 
-    const episodesList = matchCol.posts.map((pid, idx) => {
-      const still = allStills[idx] || undefined;
-      return {
-        season: 1,
-        number: idx + 1,
-        ref: `movies:${pid}`,
-        title: `Película #${idx + 1}`,
-        still
-      };
-    });
+    const episodesList = matchCol.posts.map((pid, idx) => ({
+      season: 1,
+      number: idx + 1,
+      ref: `movies:${pid}`,
+      title: `Película #${idx + 1}`,
+      still: allStills[idx] || undefined
+    }));
 
     return {
       episodes: episodesList,
