@@ -177,7 +177,8 @@ function toActorItem(actor) {
 }
 
 /**
- * Busca títulos en LaMovie.
+ * Busca títulos en LaMovie y en las diferentes secciones o actores.
+ * Soporta capability 'scopedSearch' para filtrar dentro de pestañas específicas (ej. dentro de Actores o Colecciones).
  */
 export async function search(query) {
   await null;
@@ -186,6 +187,34 @@ export async function search(query) {
 
   const rawTerm = query.q.trim();
   const q = encodeURIComponent(rawTerm);
+
+  // Si la búsqueda es dentro de una categoría o contexto específico (scopedSearch)
+  if (query.within) {
+    if (query.within.startsWith("cast:")) {
+      const aUrl = `${BASE_API}/listing/tax/cast?page=1&orderBy=latest&order=desc&postsPerPage=50`;
+      const aRes = await kino.fetch(aUrl).catch(() => null);
+      if (aRes && aRes.ok) {
+        const aData = aRes.json();
+        const actorItems = aData && aData.data && Array.isArray(aData.data.items) ? aData.data.items : [];
+        return actorItems
+          .filter(a => a.term_name && a.term_name.toLowerCase().includes(rawTerm.toLowerCase()))
+          .map(toActorItem)
+          .filter(Boolean);
+      }
+      return [];
+    }
+
+    if (query.within.startsWith("collections")) {
+      const cUrl = `${BASE_API}/search?q=${q}&postType=collections&postsPerPage=30`;
+      const cRes = await kino.fetch(cUrl).catch(() => null);
+      if (cRes && cRes.ok) {
+        const cData = cRes.json();
+        const posts = cData && cData.data && Array.isArray(cData.data.posts) ? cData.data.posts : [];
+        return posts.map(toItem).filter(Boolean);
+      }
+      return [];
+    }
+  }
 
   const [searchRes, actorsRes] = await Promise.all([
     kino.fetch(`${BASE_API}/search?q=${q}&postType=any&postsPerPage=40`).catch(() => null),
