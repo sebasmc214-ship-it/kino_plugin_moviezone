@@ -1,7 +1,7 @@
 {
   "id": "moviezone",
   "name": "MovieZone",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "apiVersion": 5,
   "entry": "plugin.js",
   "icon": "icon.png",
@@ -27,6 +27,6 @@
   ],
   "signature": {
     "authorKey": "c854d228f76e82903e20604bd7fd5ca35b0e7d9eb8dacbd138bd209533c7170c",
-    "value": "7257d7d226beec7fd84954e3c4b98074167f79bfff0c7aac8e5b7041b467bcb909d9126f1219be62c273bf9191fbae1782670b447347424bed92243b01a7a205"
+    "value": "9f90cee3e58cfc08fe3992e90d53546d2b1354725eb74af572af2cda9e19028d4aa8ae1881233df0a1fffacfa15bf634a43efecc971142dbf7db60b51a3e7107"
   }
 }
