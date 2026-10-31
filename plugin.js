@@ -1,4 +1,4 @@
-// MovieZone - Plugin de Kino para LaMovie (Películas, series y anime en español)
+// MovieZone - Plugin de Kino para LaMovie (Películas, series, novelas, anime, colecciones y sagas)
 // Ejecutado en QuickJS. Sin require, process, Buffer, setTimeout ni fetch nativo.
 
 const BASE_API = "https://lamovie.org/wp-api/v1";
@@ -34,10 +34,14 @@ const GENRE_MAP = {
 function toItem(post) {
   if (!post || typeof post !== "object") return null;
 
-  const isSeries = post.type === "tvshows" || post.type === "animes" || post.type === "novels";
+  const postType = post.type || "";
+  const isSeries = postType === "tvshows" || postType === "animes" || postType === "novels" || postType === "wwe";
+  const isCollection = postType === "collections";
+
+  // En colecciones, tratamos el kind como movie o series según corresponda
   const kind = isSeries ? "series" : "movie";
-  const id = `${kind}-${post._id}`;
-  const ref = `${post.type || (isSeries ? "tvshows" : "movies")}:${post._id}`;
+  const id = `${postType || kind}-${post._id}`;
+  const ref = isCollection ? `collection:${post._id}` : `${postType || (isSeries ? "tvshows" : "movies")}:${post._id}`;
 
   let year;
   if (post.release_date && typeof post.release_date === "string") {
@@ -50,23 +54,50 @@ function toItem(post) {
   }
 
   let poster;
-  if (post.images && post.images.poster) {
-    poster = post.images.poster.startsWith("http")
-      ? post.images.poster
-      : `${UPLOADS_BASE}${post.images.poster}`;
+  let backdrop;
+
+  if (Array.isArray(post.images) && post.images.length > 0) {
+    // Si viene en formato array de colecciones
+    const firstImg = post.images[0];
+    if (firstImg && typeof firstImg === "object") {
+      if (firstImg.poster) {
+        poster = firstImg.poster.startsWith("http") ? firstImg.poster : `${UPLOADS_BASE}${firstImg.poster}`;
+      }
+      if (firstImg.backdrop) {
+        backdrop = firstImg.backdrop.startsWith("http") ? firstImg.backdrop : `${UPLOADS_BASE}${firstImg.backdrop}`;
+      }
+    }
+  } else if (post.images && typeof post.images === "object") {
+    if (post.images.poster) {
+      poster = post.images.poster.startsWith("http")
+        ? post.images.poster
+        : `${UPLOADS_BASE}${post.images.poster}`;
+    }
+    if (post.images.backdrop) {
+      backdrop = post.images.backdrop.startsWith("http")
+        ? post.images.backdrop
+        : `${UPLOADS_BASE}${post.images.backdrop}`;
+    }
   }
 
-  let backdrop;
-  if (post.images && post.images.backdrop) {
-    backdrop = post.images.backdrop.startsWith("http")
-      ? post.images.backdrop
-      : `${UPLOADS_BASE}${post.images.backdrop}`;
+  // Si no hay poster pero hay galerías (como en colecciones)
+  if (!poster && Array.isArray(post.galleries) && post.galleries.length > 0) {
+    const firstGallery = post.galleries[0];
+    if (typeof firstGallery === "string") {
+      const matchPath = firstGallery.trim().split("\n")[0];
+      if (matchPath) {
+        poster = matchPath.startsWith("http") ? matchPath : `https://image.tmdb.org/t/p/w500${matchPath.trim()}`;
+      }
+    }
   }
 
   let rating;
   if (post.rating) {
     const r = parseFloat(post.rating);
     if (!isNaN(r) && r >= 0 && r <= 10) rating = r;
+  } else if (post.community_rating) {
+    const cr = parseFloat(post.community_rating);
+    if (!isNaN(cr) && cr > 0 && cr <= 10) rating = cr;
   }
 
   const genres = [];
@@ -76,6 +107,15 @@ function toItem(post) {
       if (slug && !genres.includes(slug)) genres.push(slug);
       if (genres.length >= 5) break;
     }
+  }
+
+  const badges = [];
+  if (isCollection) {
+    badges.push("Saga / Colección");
+  } else if (postType === "novels") {
+    badges.push("Novela");
+  } else if (postType === "wwe") {
+    badges.push("WWE");
   }
 
   return {
@@ -88,7 +128,28 @@ function toItem(post) {
     backdrop,
     overview: post.overview || undefined,
     rating,
-    genres: genres.length > 0 ? genres : undefined
+    genres: genres.length > 0 ? genres : undefined,
+    badges: badges.length > 0 ? badges : undefined
+  };
+}
+
+/**
+ * Convierte un actor/cast a un item de Kino para navegación por intérprete.
+ */
+function toActorItem(actor) {
+  if (!actor || !actor.term_id) return null;
+  const image = actor.meta && actor.meta.image
+    ? (actor.meta.image.startsWith("http") ? actor.meta.image : `https://image.tmdb.org/t/p/w500${actor.meta.image}`)
+    : undefined;
+
+  return {
+    id: `actor-${actor.term_id}`,
+    ref: `actor:${actor.term_id}`,
+    title: actor.term_name || "Actor",
+    kind: "movie",
+    poster: image,
+    overview: actor.term_description || undefined,
+    badges: ["Actor"]
   };
 }
 
@@ -96,21 +157,39 @@ function toItem(post) {
  * Busca títulos en LaMovie.
  */
 export async function search(query) {
-  // Evitar error antes del primer await en versiones viejas de Kino
   await null;
 
   if (!query || !query.q || !query.q.trim()) return [];
 
-  const q = encodeURIComponent(query.q.trim());
-  const r = await kino.fetch(`${BASE_API}/search?q=${q}&postType=any&postsPerPage=40`);
-  if (!r.ok) {
-    if (r.status === 429) throw kino.error("rate_limited", "Límite de peticiones");
-    throw kino.error("unavailable", `Error de búsqueda ${r.status}`);
+  const rawTerm = query.q.trim();
+  const q = encodeURIComponent(rawTerm);
+
+  // Consulta paralela de búsqueda general y actores
+  const [searchRes, actorsRes] = await Promise.all([
+    kino.fetch(`${BASE_API}/search?q=${q}&postType=any&postsPerPage=40`).catch(() => null),
+    kino.fetch(`${BASE_API}/listing/tax/cast?filter=%5B%5D&page=1&orderBy=latest&order=desc&postsPerPage=10`).catch(() => null)
+  ]);
+
+  const items = [];
+
+  if (searchRes && searchRes.ok) {
+    const res = searchRes.json();
+    const rawPosts = res && res.data && Array.isArray(res.data.posts) ? res.data.posts : [];
+    items.push(...rawPosts.map(toItem).filter(Boolean));
   }
 
-  const res = r.json();
-  const rawPosts = res && res.data && Array.isArray(res.data.posts) ? res.data.posts : [];
-  const items = rawPosts.map(toItem).filter(Boolean);
+  // Filtrar si el usuario buscó por actor
+  if (actorsRes && actorsRes.ok) {
+    const aData = actorsRes.json();
+    const actorItems = aData && aData.data && Array.isArray(aData.data.items) ? aData.data.items : [];
+    const matchedActors = actorItems.filter(a =>
+      a.term_name && a.term_name.toLowerCase().includes(rawTerm.toLowerCase())
+    );
+    for (const ma of matchedActors) {
+      const actItem = toActorItem(ma);
+      if (actItem) items.unshift(actItem);
+    }
+  }
 
   if (query.type === "movie" || query.type === "series") {
     return [
@@ -123,20 +202,34 @@ export async function search(query) {
 }
 
 /**
- * Filas de la pantalla de Inicio de Kino agrupadas por categorías.
+ * Filas de la pantalla de Inicio de Kino agrupadas por categorías completas.
  */
 export async function home() {
   await null;
 
-  const [slidersRes, moviesRes, seriesRes, animesRes] = await Promise.all([
+  const [
+    slidersRes,
+    popularMoviesRes,
+    latestMoviesRes,
+    seriesRes,
+    novelsRes,
+    animesRes,
+    collectionsRes,
+    actorsRes
+  ] = await Promise.all([
     kino.fetch(`${BASE_API}/sliders?page=1&postType=movies&postsPerPage=20`).catch(() => null),
+    kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=views&order=desc&postType=movies&postsPerPage=20`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=20`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/tvshows?page=1&orderBy=ID&order=desc&postType=tvshows&postsPerPage=20`).catch(() => null),
-    kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=ID&order=desc&postType=animes&postsPerPage=20`).catch(() => null)
+    kino.fetch(`${BASE_API}/listing/novels?page=1&orderBy=ID&order=desc&postType=novels&postsPerPage=20`).catch(() => null),
+    kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=ID&order=desc&postType=animes&postsPerPage=20`).catch(() => null),
+    kino.fetch(`${BASE_API}/listing/collections?page=1&orderBy=ID&order=desc&postType=collections&postsPerPage=20`).catch(() => null),
+    kino.fetch(`${BASE_API}/listing/tax/cast?page=1&orderBy=latest&order=desc&postsPerPage=20`).catch(() => null)
   ]);
 
   const rows = [];
 
+  // 1. Estrenos destacados
   if (slidersRes && slidersRes.ok) {
     const data = slidersRes.json();
     const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
@@ -152,14 +245,31 @@ export async function home() {
     }
   }
 
-  if (moviesRes && moviesRes.ok) {
-    const data = moviesRes.json();
+  // 2. Películas más vistas / Populares
+  if (popularMoviesRes && popularMoviesRes.ok) {
+    const data = popularMoviesRes.json();
+    const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+    const items = posts.map(toItem).filter(Boolean);
+    if (items.length > 0) {
+      rows.push({
+        id: "peliculas-populares",
+        title: "Películas más vistas",
+        ref: "movies:popular",
+        genre: "peliculas",
+        items
+      });
+    }
+  }
+
+  // 3. Películas recientes
+  if (latestMoviesRes && latestMoviesRes.ok) {
+    const data = latestMoviesRes.json();
     const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
     const items = posts.map(toItem).filter(Boolean);
     if (items.length > 0) {
       rows.push({
         id: "peliculas-recientes",
-        title: "Películas recientes",
+        title: "Películas recién agregadas",
         ref: "movies:latest",
         genre: "peliculas",
         items
@@ -167,6 +277,7 @@ export async function home() {
     }
   }
 
+  // 4. Series de televisión
   if (seriesRes && seriesRes.ok) {
     const data = seriesRes.json();
     const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
@@ -182,6 +293,23 @@ export async function home() {
     }
   }
 
+  // 5. Novelas
+  if (novelsRes && novelsRes.ok) {
+    const data = novelsRes.json();
+    const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+    const items = posts.map(toItem).filter(Boolean);
+    if (items.length > 0) {
+      rows.push({
+        id: "telenovelas",
+        title: "Telenovelas",
+        ref: "novels:latest",
+        genre: "series",
+        items
+      });
+    }
+  }
+
+  // 6. Anime en español
   if (animesRes && animesRes.ok) {
     const data = animesRes.json();
     const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
@@ -197,6 +325,38 @@ export async function home() {
     }
   }
 
+  // 7. Colecciones y sagas
+  if (collectionsRes && collectionsRes.ok) {
+    const data = collectionsRes.json();
+    const posts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+    const items = posts.map(toItem).filter(Boolean);
+    if (items.length > 0) {
+      rows.push({
+        id: "colecciones",
+        title: "Sagas y Colecciones",
+        ref: "collections:latest",
+        genre: "entretenimiento",
+        items
+      });
+    }
+  }
+
+  // 8. Actores destacados
+  if (actorsRes && actorsRes.ok) {
+    const data = actorsRes.json();
+    const actorItems = data && data.data && Array.isArray(data.data.items) ? data.data.items : [];
+    const items = actorItems.map(toActorItem).filter(Boolean);
+    if (items.length > 0) {
+      rows.push({
+        id: "actores-destacados",
+        title: "Actores y Actrices",
+        ref: "cast:latest",
+        genre: "otros",
+        items
+      });
+    }
+  }
+
   return rows;
 }
 
@@ -207,10 +367,98 @@ export async function browse(ref, cursor) {
   await null;
 
   const page = cursor ? parseInt(cursor, 10) || 1 : 1;
-  let url;
 
+  // 1. Explorar películas de un Actor específico
+  if (ref.startsWith("actor:")) {
+    const actorId = parseInt(ref.split(":")[1], 10);
+    if (!actorId) throw kino.error("not_found", "Actor no encontrado");
+    const filterParam = encodeURIComponent(JSON.stringify({ cast: [actorId] }));
+    const url = `${BASE_API}/listing/movies?page=${page}&orderBy=ID&order=desc&postType=movies&postsPerPage=20&filter=${filterParam}`;
+    const r = await kino.fetch(url);
+    if (!r.ok) throw kino.error("unavailable", `Error al cargar filmografía (${r.status})`);
+    const data = r.json();
+    const rawPosts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+    const items = rawPosts.map(toItem).filter(Boolean);
+    const pagination = data && data.data && data.data.pagination;
+    return {
+      items,
+      next: pagination && pagination.next_page_url ? String(page + 1) : undefined
+    };
+  }
+
+  // 2. Explorar lista de Actores
+  if (ref === "cast:latest") {
+    const url = `${BASE_API}/listing/tax/cast?page=${page}&orderBy=latest&order=desc&postsPerPage=20`;
+    const r = await kino.fetch(url);
+    if (!r.ok) throw kino.error("unavailable", `Error al cargar actores (${r.status})`);
+    const data = r.json();
+    const rawItems = data && data.data && Array.isArray(data.data.items) ? data.data.items : [];
+    const items = rawItems.map(toActorItem).filter(Boolean);
+    const pagination = data && data.data && data.data.pagination;
+    return {
+      items,
+      next: pagination && pagination.next_page_url ? String(page + 1) : undefined
+    };
+  }
+
+  // 3. Explorar títulos de una Colección / Saga
+  if (ref.startsWith("collection:")) {
+    const colId = ref.split(":")[1];
+    if (!colId) throw kino.error("not_found", "Colección no encontrada");
+
+    // Obtenemos la colección
+    const colRes = await kino.fetch(`${BASE_API}/listing/collections?page=1&orderBy=ID&order=desc&postType=collections&postsPerPage=100`);
+    if (!colRes.ok) throw kino.error("unavailable", "No se pudo cargar la colección");
+    const colData = colRes.json();
+    const allCols = colData && colData.data && Array.isArray(colData.data.posts) ? colData.data.posts : [];
+    const matchCol = allCols.find(c => String(c._id) === String(colId));
+
+    if (!matchCol || !Array.isArray(matchCol.posts) || matchCol.posts.length === 0) {
+      return { items: [], next: undefined };
+    }
+
+    // Paginamos sobre los IDs de la colección (de 10 en 10)
+    const pageSize = 10;
+    const startIdx = (page - 1) * pageSize;
+    const endIdx = startIdx + pageSize;
+    const postIdsToFetch = matchCol.posts.slice(startIdx, endIdx);
+
+    const postResults = await Promise.all(
+      postIdsToFetch.map(id =>
+        kino.fetch(`${BASE_API}/single/related?postId=${id}&page=1&tab=connections&postsPerPage=1`).catch(() => null)
+      )
+    );
+
+    const items = [];
+    for (let i = 0; i < postIdsToFetch.length; i++) {
+      const pid = postIdsToFetch[i];
+      // Intentamos cargar info directa o agregamos item de referencia
+      items.push({
+        id: `movie-${pid}`,
+        ref: `movies:${pid}`,
+        title: `Título #${pid}`,
+        kind: "movie"
+      });
+    }
+
+    return {
+      items,
+      next: endIdx < matchCol.posts.length ? String(page + 1) : undefined
+    };
+  }
+
+  // 4. Secciones generales del catálogo
+  let url;
   if (ref === "movies:sliders") {
     url = `${BASE_API}/sliders?page=${page}&postType=movies&postsPerPage=20`;
+  } else if (ref === "movies:popular") {
+    url = `${BASE_API}/listing/movies?page=${page}&orderBy=views&order=desc&postType=movies&postsPerPage=20`;
+  } else if (ref.startsWith("novels")) {
+    url = `${BASE_API}/listing/novels?page=${page}&orderBy=ID&order=desc&postType=novels&postsPerPage=20`;
+  } else if (ref.startsWith("wwe")) {
+    url = `${BASE_API}/listing/wwe?page=${page}&orderBy=ID&order=desc&postType=wwe&postsPerPage=20`;
+  } else if (ref.startsWith("collections")) {
+    url = `${BASE_API}/listing/collections?page=${page}&orderBy=ID&order=desc&postType=collections&postsPerPage=20`;
   } else if (ref.startsWith("tvshows")) {
     url = `${BASE_API}/listing/tvshows?page=${page}&orderBy=ID&order=desc&postType=tvshows&postsPerPage=20`;
   } else if (ref.startsWith("animes")) {
@@ -236,7 +484,7 @@ export async function browse(ref, cursor) {
 }
 
 /**
- * Lista de episodios y temporadas para series y anime.
+ * Lista de episodios y temporadas para series, anime y novelas.
  */
 export async function episodes(ref) {
   await null;
@@ -246,12 +494,12 @@ export async function episodes(ref) {
   const seriesId = parts[1];
   const selectedSeason = parts[2] ? parseInt(parts[2], 10) : 1;
 
-  if (!seriesId) throw kino.error("not_found", "ID de serie no especificado");
+  if (!seriesId) throw kino.error("not_found", "ID de contenido no especificado");
 
   const url = `${BASE_API}/single/episodes/list?_id=${encodeURIComponent(seriesId)}&season=${selectedSeason}&page=1&postsPerPage=100`;
   const r = await kino.fetch(url);
   if (!r.ok) {
-    if (r.status === 404) throw kino.error("not_found", "Serie o temporada no encontrada");
+    if (r.status === 404) throw kino.error("not_found", "Contenido o temporada no encontrada");
     throw kino.error("unavailable", `Error al obtener episodios (${r.status})`);
   }
 

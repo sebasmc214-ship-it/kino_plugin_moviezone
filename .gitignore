@@ -1,4 +1,4 @@
-# Claves privadas del autor (NUNCA deben subirse a GitHub)
+#P private
 *.pem
 
 # Archivos temporales locales del SDK de Kino

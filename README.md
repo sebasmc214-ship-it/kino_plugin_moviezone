@@ -63,4 +63,4 @@ Si realizas cambios en `plugin.js` o aumentas `version` en `kino-plugin.json`, f
 node sdk/seal.mjs --sign --repo sebasmc214-ship-it/kino_plugin_moviezone
 ```
 
-> **IMPORTANTE**: Conserva siempre tu archivo `kino-author-key.pem` en un lugar seguro y nunca lo subas a GitHub ni lo compartas. Si pierdes la clave, los usuarios deberán reinstalar el plugin para recibir actualizaciones.
+> **IMPORTANTE**: Conserva siempre tu archivo `kino-author-key.pem` en un lugar seguro y nunca lo subas a GitHub ni lo compartas.Si pierdes la clave, los usuarios deberán reinstalar el plugin para recibir actualizaciones.
