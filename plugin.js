@@ -513,8 +513,17 @@ export async function episodes(ref) {
 
   // 2. Títulos de una colección / saga
   if (ref.startsWith("collection:")) {
-    const colId = ref.split(":")[1];
+    const parts = ref.split(":");
+    const colId = parts[1];
     if (!colId) throw kino.error("not_found", "Colección no encontrada");
+
+    // Si el usuario seleccionó una serie específica dentro de la colección: collection:ID:series:SERIES_ID(:SEASON)?
+    if (parts.length >= 4 && (parts[2] === "series" || parts[2] === "tvshows" || parts[2] === "animes" || parts[2] === "novels")) {
+      const seriesType = parts[2];
+      const seriesId = parts[3];
+      const targetSeason = parts[4] ? parseInt(parts[4], 10) : 1;
+      return await episodes(`${seriesType}:${seriesId}:${targetSeason}`);
+    }
 
     // Endpoint directo para obtener todas las películas/series de la colección con nombre real y póster oficial
     const listingRes = await kino.fetch(`${BASE_API}/collection/${encodeURIComponent(colId)}/listing`);
@@ -555,7 +564,7 @@ export async function episodes(ref) {
           if (item.type === "tvshows" || item.type === "animes" || item.type === "novels") {
             seasonsList.push({
               id: `series-${item._id}`,
-              ref: `${item.type}:${item._id}`,
+              ref: `collection:${colId}:${item.type}:${item._id}`,
               title: (item.title || "Serie").replace(/\s*\(\d{4}\)\s*$/, "").trim()
             });
           }
