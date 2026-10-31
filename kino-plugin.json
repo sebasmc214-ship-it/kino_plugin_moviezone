@@ -3,10 +3,15 @@
   "name": "MovieZone",
   "author": "Sebasdev",
   "creator": "sebasdev",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "apiVersion": 6,
   "entry": "plugin.js",
   "icon": "icon.png",
+  "categories": [
+    "movies",
+    "series",
+    "anime"
+  ],
   "section": {
     "label": "MovieZone"
   },
@@ -33,6 +38,6 @@
   ],
   "signature": {
     "authorKey": "c854d228f76e82903e20604bd7fd5ca35b0e7d9eb8dacbd138bd209533c7170c",
-    "value": "5e969bd6c81e27b69ba13dcfa89c2e429ace5c9f2f74a4a04a2dbfd7d2c365b49c5c5ea5480f78f86748c528fa9e964fe7c2f9fcf5212aecbb235326c3902308"
+    "value": "5ad9a660550272fc5157c414988278a743f4517ebb4d836542f4538a5d66e5e27505ad41acd10357327fec0a422e067a5f996efa2d053fe54558e4cf8bd1d204"
   }
 }

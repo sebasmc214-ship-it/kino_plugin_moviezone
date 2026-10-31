@@ -505,22 +505,36 @@ export async function section({ tab } = {}) {
   }
 
   if (chosen === "series") {
-    const [seriesRes, novelsRes] = await Promise.all([
+    const [sNewRes, sPopRes, nNewRes, nPopRes] = await Promise.all([
       kino.fetch(`${BASE_API}/listing/tvshows?page=1&orderBy=ID&order=desc&postType=tvshows&postsPerPage=25`).catch(() => null),
-      kino.fetch(`${BASE_API}/listing/novels?page=1&orderBy=ID&order=desc&postType=novels&postsPerPage=25`).catch(() => null)
+      kino.fetch(`${BASE_API}/listing/tvshows?page=1&orderBy=views&order=desc&postType=tvshows&postsPerPage=25`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/novels?page=1&orderBy=ID&order=desc&postType=novels&postsPerPage=25`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/novels?page=1&orderBy=views&order=desc&postType=novels&postsPerPage=25`).catch(() => null)
     ]);
     const sRows = [];
-    if (seriesRes && seriesRes.ok) {
-      const d = seriesRes.json();
+    if (sPopRes && sPopRes.ok) {
+      const d = sPopRes.json();
       const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
       const it = p.map(toItem).filter(Boolean);
-      if (it.length > 0) sRows.push({ id: "sec-series", title: "Series", ref: "tvshows:latest", genre: "series", items: it });
+      if (it.length > 0) sRows.push({ id: "sec-series-pop", title: "Series más populares", ref: "tvshows:popular", genre: "series", items: it });
     }
-    if (novelsRes && novelsRes.ok) {
-      const d = novelsRes.json();
+    if (sNewRes && sNewRes.ok) {
+      const d = sNewRes.json();
       const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
       const it = p.map(toItem).filter(Boolean);
-      if (it.length > 0) sRows.push({ id: "sec-novelas", title: "Telenovelas", ref: "novels:latest", genre: "series", items: it });
+      if (it.length > 0) sRows.push({ id: "sec-series-new", title: "Series recién agregadas", ref: "tvshows:latest", genre: "series", items: it });
+    }
+    if (nPopRes && nPopRes.ok) {
+      const d = nPopRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) sRows.push({ id: "sec-novelas-pop", title: "Telenovelas más vistas", ref: "novels:popular", genre: "series", items: it });
+    }
+    if (nNewRes && nNewRes.ok) {
+      const d = nNewRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) sRows.push({ id: "sec-novelas-new", title: "Telenovelas recientes", ref: "novels:latest", genre: "series", items: it });
     }
     return {
       tabs,
@@ -534,13 +548,29 @@ export async function section({ tab } = {}) {
   }
 
   if (chosen === "anime") {
-    const animesRes = await kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=ID&order=desc&postType=animes&postsPerPage=30`).catch(() => null);
+    const [aNewRes, aPopRes, aP2Res] = await Promise.all([
+      kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=ID&order=desc&postType=animes&postsPerPage=25`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=views&order=desc&postType=animes&postsPerPage=25`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/animes?page=2&orderBy=ID&order=desc&postType=animes&postsPerPage=25`).catch(() => null)
+    ]);
     const aRows = [];
-    if (animesRes && animesRes.ok) {
-      const d = animesRes.json();
+    if (aPopRes && aPopRes.ok) {
+      const d = aPopRes.json();
       const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
       const it = p.map(toItem).filter(Boolean);
-      if (it.length > 0) aRows.push({ id: "sec-animes", title: "Anime en español", ref: "animes:latest", genre: "anime", items: it });
+      if (it.length > 0) aRows.push({ id: "sec-animes-pop", title: "Anime más popular", ref: "animes:popular", genre: "anime", items: it });
+    }
+    if (aNewRes && aNewRes.ok) {
+      const d = aNewRes.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) aRows.push({ id: "sec-animes-new", title: "Anime recién agregado", ref: "animes:latest", genre: "anime", items: it });
+    }
+    if (aP2Res && aP2Res.ok) {
+      const d = aP2Res.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) aRows.push({ id: "sec-animes-mas", title: "Más títulos de Anime", ref: "animes:page2", genre: "anime", items: it });
     }
     return {
       tabs,
@@ -554,13 +584,36 @@ export async function section({ tab } = {}) {
   }
 
   if (chosen === "colecciones") {
-    const colRes = await kino.fetch(`${BASE_API}/listing/collections?page=1&orderBy=ID&order=desc&postType=collections&postsPerPage=30`).catch(() => null);
+    const [col1Res, col2Res, col3Res, col4Res] = await Promise.all([
+      kino.fetch(`${BASE_API}/listing/collections?page=1&orderBy=ID&order=desc&postType=collections&postsPerPage=25`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/collections?page=2&orderBy=ID&order=desc&postType=collections&postsPerPage=25`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/collections?page=3&orderBy=ID&order=desc&postType=collections&postsPerPage=25`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/collections?page=4&orderBy=ID&order=desc&postType=collections&postsPerPage=25`).catch(() => null)
+    ]);
     const cRows = [];
-    if (colRes && colRes.ok) {
-      const d = colRes.json();
+    if (col1Res && col1Res.ok) {
+      const d = col1Res.json();
       const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
       const it = p.map(toItem).filter(Boolean);
-      if (it.length > 0) cRows.push({ id: "sec-colecciones", title: "Sagas y Colecciones", ref: "collections:latest", genre: "entretenimiento", items: it });
+      if (it.length > 0) cRows.push({ id: "sec-col-1", title: "Sagas y Colecciones destacadas", ref: "collections:latest", genre: "entretenimiento", items: it });
+    }
+    if (col2Res && col2Res.ok) {
+      const d = col2Res.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) cRows.push({ id: "sec-col-2", title: "Sagas populares", ref: "collections:p2", genre: "entretenimiento", items: it });
+    }
+    if (col3Res && col3Res.ok) {
+      const d = col3Res.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) cRows.push({ id: "sec-col-3", title: "Colecciones de franquicias", ref: "collections:p3", genre: "entretenimiento", items: it });
+    }
+    if (col4Res && col4Res.ok) {
+      const d = col4Res.json();
+      const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
+      const it = p.map(toItem).filter(Boolean);
+      if (it.length > 0) cRows.push({ id: "sec-col-4", title: "Más Sagas y Universos", ref: "collections:p4", genre: "entretenimiento", items: it });
     }
     return {
       tabs,
@@ -574,13 +627,36 @@ export async function section({ tab } = {}) {
   }
 
   if (chosen === "actores") {
-    const actorsRes = await kino.fetch(`${BASE_API}/listing/tax/cast?page=1&orderBy=latest&order=desc&postsPerPage=30`).catch(() => null);
+    const [act1Res, act2Res, act3Res, act4Res] = await Promise.all([
+      kino.fetch(`${BASE_API}/listing/tax/cast?page=1&orderBy=latest&order=desc&postsPerPage=20`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/tax/cast?page=2&orderBy=latest&order=desc&postsPerPage=20`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/tax/cast?page=3&orderBy=latest&order=desc&postsPerPage=20`).catch(() => null),
+      kino.fetch(`${BASE_API}/listing/tax/cast?page=4&orderBy=latest&order=desc&postsPerPage=20`).catch(() => null)
+    ]);
     const actRows = [];
-    if (actorsRes && actorsRes.ok) {
-      const d = actorsRes.json();
+    if (act1Res && act1Res.ok) {
+      const d = act1Res.json();
       const p = d && d.data && Array.isArray(d.data.items) ? d.data.items : [];
       const it = p.map(toActorItem).filter(Boolean);
-      if (it.length > 0) actRows.push({ id: "sec-actores", title: "Actores y Actrices", ref: "cast:latest", genre: "otros", items: it });
+      if (it.length > 0) actRows.push({ id: "sec-actores-1", title: "Actores y Actrices destacados", ref: "cast:latest", genre: "otros", items: it });
+    }
+    if (act2Res && act2Res.ok) {
+      const d = act2Res.json();
+      const p = d && d.data && Array.isArray(d.data.items) ? d.data.items : [];
+      const it = p.map(toActorItem).filter(Boolean);
+      if (it.length > 0) actRows.push({ id: "sec-actores-2", title: "Estrellas de Hollywood", ref: "cast:p2", genre: "otros", items: it });
+    }
+    if (act3Res && act3Res.ok) {
+      const d = act3Res.json();
+      const p = d && d.data && Array.isArray(d.data.items) ? d.data.items : [];
+      const it = p.map(toActorItem).filter(Boolean);
+      if (it.length > 0) actRows.push({ id: "sec-actores-3", title: "Iconos del cine de acción", ref: "cast:p3", genre: "otros", items: it });
+    }
+    if (act4Res && act4Res.ok) {
+      const d = act4Res.json();
+      const p = d && d.data && Array.isArray(d.data.items) ? d.data.items : [];
+      const it = p.map(toActorItem).filter(Boolean);
+      if (it.length > 0) actRows.push({ id: "sec-actores-4", title: "Más Actores y Actrices", ref: "cast:p4", genre: "otros", items: it });
     }
     return {
       tabs,
@@ -594,6 +670,35 @@ export async function section({ tab } = {}) {
   }
 
   return { tabs, tab: chosen, rows: [] };
+}
+
+/**
+ * Categorías oficiales exportadas para la pantalla 'Categorías' de Kino TV.
+ * Permite que MovieZone aparezca en los mosaicos de categorías con arte visual.
+ */
+export async function categories() {
+  await null;
+
+  return FEATURED_GENRES.map(g => {
+    let art;
+    if (g.slug === "accion" || g.slug === "crimen") art = `${UPLOADS_BASE}/thumbs/8a2d334536b2f4146af8cf46acd85110_hd.webp`;
+    else if (g.slug === "comedia") art = `${UPLOADS_BASE}/thumbs/f3be5eb7ff15f2013a3b65fbca4bf864_hd.webp`;
+    else if (g.slug === "drama" || g.slug === "romance" || g.slug === "familia") art = `${UPLOADS_BASE}/thumbs/b912bf47e2c28af9cc19658d3cd935d3_hd.webp`;
+    else if (g.slug === "suspense") art = `${UPLOADS_BASE}/thumbs/92dd74653c602bae9e466999b7ac15a0_hd.webp`;
+    else if (g.slug === "terror") art = `${UPLOADS_BASE}/thumbs/63a7fa2a092fb74558974240e53d7c9a_hd.webp`;
+    else if (g.slug === "animacion") art = `${UPLOADS_BASE}/thumbs/2b348ef45c33b63733388ee1f906b8a2_hd.webp`;
+    else if (g.slug === "ciencia-ficcion") art = `${UPLOADS_BASE}/thumbs/8275fb6c3c5132ef0289546b993b52ab_hd.webp`;
+    else if (g.slug === "aventura") art = `${UPLOADS_BASE}/thumbs/f66000cec7fe1a765db56272c4e1e9d5_hd.webp`;
+    else if (g.slug === "fantasia") art = `${UPLOADS_BASE}/thumbs/ba5451d3c91a0f982f103cdbe249bc78_hd.webp`;
+    else art = BRAND_BANNER;
+
+    return {
+      id: `cat-${g.slug}`,
+      title: g.name,
+      ref: `genre:${g.id}`,
+      art
+    };
+  });
 }
 
 /**
@@ -661,6 +766,12 @@ export async function browse(ref, cursor) {
     url = `${BASE_API}/listing/movies?page=${page}&orderBy=ID&order=desc&postType=movies&postsPerPage=25&filter=${encodeURIComponent(JSON.stringify({ years: [74006, 4] }))}`;
   } else if (ref === "movies:popular") {
     url = `${BASE_API}/listing/movies?page=${page}&orderBy=views&order=desc&postType=movies&postsPerPage=20`;
+  } else if (ref === "tvshows:popular") {
+    url = `${BASE_API}/listing/tvshows?page=${page}&orderBy=views&order=desc&postType=tvshows&postsPerPage=20`;
+  } else if (ref === "novels:popular") {
+    url = `${BASE_API}/listing/novels?page=${page}&orderBy=views&order=desc&postType=novels&postsPerPage=20`;
+  } else if (ref === "animes:popular") {
+    url = `${BASE_API}/listing/animes?page=${page}&orderBy=views&order=desc&postType=animes&postsPerPage=20`;
   } else if (ref.startsWith("novels")) {
     url = `${BASE_API}/listing/novels?page=${page}&orderBy=ID&order=desc&postType=novels&postsPerPage=20`;
   } else if (ref.startsWith("wwe")) {
