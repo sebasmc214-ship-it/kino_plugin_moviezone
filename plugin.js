@@ -3,6 +3,7 @@
 
 const BASE_API = "https://lamovie.org/wp-api/v1";
 const UPLOADS_BASE = "https://lamovie.org/wp-content/uploads";
+const BRAND_BANNER = "https://raw.githubusercontent.com/sebasmc214-ship-it/kino_plugin_moviezone/main/banner.jpg";
 
 const GENRE_MAP = {
   17: "drama",
@@ -255,6 +256,9 @@ export async function home() {
   }
   const premierItems = Array.from(premierItemsMap.values());
   if (premierItems.length > 0) {
+    // Garantizar que la portada del plugin en 'Tus plugins' sea siempre el banner oficial de MovieZone
+    premierItems[0].backdrop = BRAND_BANNER;
+
     rows.push({
       id: "estrenos",
       title: "Estrenos destacados",

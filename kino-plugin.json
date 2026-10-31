@@ -3,7 +3,7 @@
   "name": "MovieZone",
   "author": "Sebasdev",
   "creator": "Sebasdev",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "apiVersion": 5,
   "entry": "plugin.js",
   "icon": "icon.png",
@@ -16,7 +16,8 @@
     "*.vimeos.zip",
     "videoapp.zip",
     "*.videoapp.zip",
-    "image.tmdb.org"
+    "image.tmdb.org",
+    "raw.githubusercontent.com"
   ],
   "streamHosts": "any",
   "capabilities": [
@@ -29,6 +30,6 @@
   ],
   "signature": {
     "authorKey": "c854d228f76e82903e20604bd7fd5ca35b0e7d9eb8dacbd138bd209533c7170c",
-    "value": "69650140539e9bacebec79cf6877bc636f0c6a4a88130ff287e8b73a5d8fc499101266eeb237cb2974fab29ba80030525525fd8fa3df581a92f23a33b96b700c"
+    "value": "05c43c0568ebdddd63f549782b8338767efdc5ca39c918a52805c1479d95be8ee4c7fbc9403292e076ed18f0a58182d019c8e01ec9f73bea5b324c81a35a9408"
   }
 }
