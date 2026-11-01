@@ -1201,6 +1201,8 @@ export async function resolve(ref) {
     return 0;
   });
 
+  const resolvedStreams = [];
+
   for (const embed of sortedEmbeds) {
     if (!embed || !embed.url) continue;
 
@@ -1242,15 +1244,17 @@ export async function resolve(ref) {
             const m3u8Match = unpacked.match(/file:\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/);
             if (m3u8Match && m3u8Match[1]) {
               const subtitles = extractSubtitles(unpacked);
-              return {
+              const label = embed.server ? `${embed.server} · ${embed.quality || "HD"}` : (embed.quality || "HD");
+              resolvedStreams.push({
                 url: m3u8Match[1],
                 mime: "application/vnd.apple.mpegurl",
                 headers: {
                   "Referer": "https://vimeos.net/",
                   "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
                 },
-                subtitles: subtitles.length > 0 ? subtitles : undefined
-              };
+                subtitles: subtitles.length > 0 ? subtitles : undefined,
+                label
+              });
             }
           }
         }
@@ -1258,6 +1262,19 @@ export async function resolve(ref) {
         // Continuar con el siguiente embed
       }
     }
+  }
+
+  if (resolvedStreams.length > 0) {
+    const primary = resolvedStreams[0];
+    if (resolvedStreams.length > 1) {
+      primary.alternatives = resolvedStreams.slice(1).map(alt => ({
+        url: alt.url,
+        mime: alt.mime,
+        headers: alt.headers,
+        label: alt.label
+      }));
+    }
+    return primary;
   }
 
   throw kino.error("not_found", "No se pudo extraer un enlace de video compatible");
