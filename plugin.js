@@ -214,6 +214,54 @@ export async function search(query) {
       }
       return [];
     }
+
+    if (query.within.startsWith("animes")) {
+      const anUrl = `${BASE_API}/search?q=${q}&postType=animes&postsPerPage=30`;
+      const anRes = await kino.fetch(anUrl).catch(() => null);
+      if (anRes && anRes.ok) {
+        const anData = anRes.json();
+        const posts = anData && anData.data && Array.isArray(anData.data.posts) ? anData.data.posts : [];
+        return posts.map(toItem).filter(Boolean);
+      }
+      return [];
+    }
+
+    if (query.within.startsWith("tvshows") || query.within.startsWith("novels")) {
+      const tvUrl = `${BASE_API}/search?q=${q}&postType=tvshows&postsPerPage=30`;
+      const novUrl = `${BASE_API}/search?q=${q}&postType=novels&postsPerPage=30`;
+      const [tvRes, novRes] = await Promise.all([
+        kino.fetch(tvUrl).catch(() => null),
+        kino.fetch(novUrl).catch(() => null)
+      ]);
+      const resPosts = [];
+      if (tvRes && tvRes.ok) {
+        const d = tvRes.json();
+        if (d && d.data && Array.isArray(d.data.posts)) resPosts.push(...d.data.posts);
+      }
+      if (novRes && novRes.ok) {
+        const d = novRes.json();
+        if (d && d.data && Array.isArray(d.data.posts)) resPosts.push(...d.data.posts);
+      }
+      return resPosts.map(toItem).filter(Boolean);
+    }
+
+    if (query.within.startsWith("genre:")) {
+      const gId = parseInt(query.within.split(":")[1], 10);
+      if (gId) {
+        const fParam = encodeURIComponent(JSON.stringify({ genres: [gId] }));
+        const gUrl = `${BASE_API}/listing/movies?page=1&orderBy=ID&order=desc&postType=movies&postsPerPage=40&filter=${fParam}`;
+        const gRes = await kino.fetch(gUrl).catch(() => null);
+        if (gRes && gRes.ok) {
+          const gData = gRes.json();
+          const posts = gData && gData.data && Array.isArray(gData.data.posts) ? gData.data.posts : [];
+          return posts
+            .filter(p => p.title && p.title.toLowerCase().includes(rawTerm.toLowerCase()))
+            .map(toItem)
+            .filter(Boolean);
+        }
+      }
+      return [];
+    }
   }
 
   const [searchRes, actorsRes] = await Promise.all([

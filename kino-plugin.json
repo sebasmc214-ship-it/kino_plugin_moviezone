@@ -3,7 +3,7 @@
   "name": "MovieZone",
   "author": "Sebasdev",
   "creator": "sebasdev",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "apiVersion": 6,
   "entry": "plugin.js",
   "icon": "icon.png",
@@ -39,6 +39,6 @@
   ],
   "signature": {
     "authorKey": "c854d228f76e82903e20604bd7fd5ca35b0e7d9eb8dacbd138bd209533c7170c",
-    "value": "cefb25773e8287709cb103b0f030108e9e0b0f6ce2ca95fc76f4cf013f04b72d161817484549e46c94b1862476178f2ae0e3a075cc7a4238f8b27535deb25907"
+    "value": "4ff7c1773d923b18e52395c321b4139b9cdb06c09bd303b6ba0e80812a2a9e5d5a58e3d35d5374f6a1577b4f628d07847d3dc03b4f8e422b5ccb51f1f7761e03"
   }
 }
