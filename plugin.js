@@ -1280,19 +1280,36 @@ export async function episodes(ref) {
   const parts = ref.split(":");
   const type = parts[0] || "tvshows";
   const seriesId = parts[1];
-  const selectedSeason = parts[2] ? parseInt(parts[2], 10) : 1;
+  let selectedSeason = parts[2] ? parseInt(parts[2], 10) : 1;
 
   if (!seriesId) throw kino.error("not_found", "ID de contenido no especificado");
 
-  const url = `${BASE_API}/single/episodes/list?_id=${encodeURIComponent(seriesId)}&season=${selectedSeason}&page=1&postsPerPage=100`;
-  const r = await kino.fetch(url);
+  let url = `${BASE_API}/single/episodes/list?_id=${encodeURIComponent(seriesId)}&season=${selectedSeason}&page=1&postsPerPage=100`;
+  let r = await kino.fetch(url);
   if (!r.ok) {
     if (r.status === 404) throw kino.error("not_found", "Contenido o temporada no encontrada");
     throw kino.error("unavailable", `Error al obtener episodios (${r.status})`);
   }
 
-  const data = r.json();
-  const rawPosts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+  let data = r.json();
+  let rawPosts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+
+  // Si la temporada solicitada (ej. temporada 1) no tiene episodios cargados en el servidor,
+  // pero la serie tiene episodios en otra temporada (ej. temporada 2 como en 'Buscando a Wanda'),
+  // se conmuta automáticamente a la primera temporada disponible.
+  if (rawPosts.length === 0 && data && data.data && Array.isArray(data.data.seasons)) {
+    const availableSeasons = data.data.seasons.map(Number).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
+    if (availableSeasons.length > 0 && !availableSeasons.includes(selectedSeason)) {
+      selectedSeason = availableSeasons[0];
+      url = `${BASE_API}/single/episodes/list?_id=${encodeURIComponent(seriesId)}&season=${selectedSeason}&page=1&postsPerPage=100`;
+      r = await kino.fetch(url);
+      if (r.ok) {
+        data = r.json();
+        rawPosts = data && data.data && Array.isArray(data.data.posts) ? data.data.posts : [];
+      }
+    }
+  }
+
   if (rawPosts.length === 0) throw kino.error("not_found", "No se encontraron episodios");
 
   const episodesList = rawPosts.map(post => {
@@ -1468,14 +1485,24 @@ export async function resolve(ref) {
   }
 
   // Si se solicita reproducir una serie directamente (ej. desde una colección de series),
-  // se obtiene automáticamente su primer episodio
+  // se obtiene automáticamente su primer episodio disponible
   if (type === "tvshows" || type === "animes" || type === "novels") {
     try {
       const epUrl = `${BASE_API}/single/episodes/list?_id=${encodeURIComponent(postId)}&season=1&page=1&postsPerPage=1`;
       const epRes = await kino.fetch(epUrl);
       if (epRes.ok) {
-        const epData = epRes.json();
-        const firstEp = epData && epData.data && Array.isArray(epData.data.posts) ? epData.data.posts[0] : null;
+        let epData = epRes.json();
+        let firstEp = epData && epData.data && Array.isArray(epData.data.posts) ? epData.data.posts[0] : null;
+        if (!firstEp && epData && epData.data && Array.isArray(epData.data.seasons)) {
+          const availSeasons = epData.data.seasons.map(Number).filter(n => !isNaN(n) && n > 0).sort((a, b) => a - b);
+          if (availSeasons.length > 0) {
+            const fallbackEpRes = await kino.fetch(`${BASE_API}/single/episodes/list?_id=${encodeURIComponent(postId)}&season=${availSeasons[0]}&page=1&postsPerPage=1`);
+            if (fallbackEpRes.ok) {
+              epData = fallbackEpRes.json();
+              firstEp = epData && epData.data && Array.isArray(epData.data.posts) ? epData.data.posts[0] : null;
+            }
+          }
+        }
         if (firstEp && firstEp._id) {
           postId = String(firstEp._id);
         }
