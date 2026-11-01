@@ -1179,10 +1179,21 @@ export async function resolve(ref) {
     : [];
 
   if (rawEmbeds.length === 0) {
-    throw kino.error("not_found", "No hay servidores de video disponibles");
+    throw kino.error("not_found", "No hay servidores de video disponibles", {
+      userMessage: "Este título aún no tiene servidores de video cargados por el proveedor."
+    });
   }
 
-  const sortedEmbeds = [...rawEmbeds].sort((a, b) => {
+  // Filtrar servidores oficiales que no tienen el video subido aún (pantallas de reemplazo 'embed.html?v=1')
+  const validEmbeds = rawEmbeds.filter(e => e && e.url && !e.url.includes("embed.html?v=1"));
+
+  if (validEmbeds.length === 0) {
+    throw kino.error("not_found", "Contenido aún no disponible en los servidores", {
+      userMessage: "Este episodio o película aún no ha sido subido a los servidores de streaming por el proveedor. Intenta nuevamente más tarde."
+    });
+  }
+
+  const sortedEmbeds = [...validEmbeds].sort((a, b) => {
     const aIsVimeos = (a.url || "").includes("vimeos.net") || (a.url || "").includes("videoapp.zip");
     const bIsVimeos = (b.url || "").includes("vimeos.net") || (b.url || "").includes("videoapp.zip");
     if (aIsVimeos && !bIsVimeos) return -1;
