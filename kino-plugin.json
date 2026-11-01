@@ -3,7 +3,7 @@
   "name": "MovieZone",
   "author": "Sebasdev",
   "creator": "sebasdev",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "apiVersion": 6,
   "entry": "plugin.js",
   "icon": "icon.png",
@@ -25,7 +25,9 @@
     "videoapp.zip",
     "*.videoapp.zip",
     "image.tmdb.org",
-    "raw.githubusercontent.com"
+    "raw.githubusercontent.com",
+    "kitsu.io",
+    "media.kitsu.app"
   ],
   "streamHosts": "any",
   "capabilities": [
@@ -39,6 +41,6 @@
   ],
   "signature": {
     "authorKey": "c854d228f76e82903e20604bd7fd5ca35b0e7d9eb8dacbd138bd209533c7170c",
-    "value": "4ff7c1773d923b18e52395c321b4139b9cdb06c09bd303b6ba0e80812a2a9e5d5a58e3d35d5374f6a1577b4f628d07847d3dc03b4f8e422b5ccb51f1f7761e03"
+    "value": "fa2dfaa135fa99753cfc6b649012ae1e4afb7ebc907930fe30445f7d9f2b5a4c691ad6eb6764b50d577fb338d8c2a8bf7e344d6f0aa2db070fd9b5e305225302"
   }
 }

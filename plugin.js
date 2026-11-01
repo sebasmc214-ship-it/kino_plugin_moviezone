@@ -177,6 +177,42 @@ function toActorItem(actor) {
 }
 
 /**
+ * Convierte una entrada de anime de Kitsu a un Item de Kino.
+ */
+function toKitsuItem(kitsuAnime) {
+  if (!kitsuAnime || !kitsuAnime.id) return null;
+  const attr = kitsuAnime.attributes || {};
+  const titles = attr.titles || {};
+  const mainTitle = titles.en || titles.en_jp || attr.canonicalTitle || "Anime";
+  let poster = attr.posterImage?.small || attr.posterImage?.original;
+  let backdrop = attr.coverImage?.small || attr.coverImage?.original;
+  let year;
+  if (attr.startDate && typeof attr.startDate === "string") {
+    const y = parseInt(attr.startDate.slice(0, 4), 10);
+    if (!isNaN(y) && y > 1960) year = y;
+  }
+  let rating;
+  if (attr.averageRating) {
+    const r = parseFloat(attr.averageRating) / 10;
+    if (!isNaN(r) && r > 0) rating = parseFloat(r.toFixed(1));
+  }
+
+  return {
+    id: `kitsu-${kitsuAnime.id}`,
+    ref: `kitsu:${kitsuAnime.id}`,
+    title: mainTitle,
+    kind: "series",
+    year,
+    poster,
+    backdrop,
+    overview: attr.synopsis || undefined,
+    rating,
+    genres: ["anime"],
+    badges: ["Anime"]
+  };
+}
+
+/**
  * Busca títulos en LaMovie y en las diferentes secciones o actores.
  * Soporta capability 'scopedSearch' para filtrar dentro de pestañas específicas (ej. dentro de Actores o Colecciones).
  */
@@ -217,13 +253,23 @@ export async function search(query) {
 
     if (query.within.startsWith("animes")) {
       const anUrl = `${BASE_API}/search?q=${q}&postType=animes&postsPerPage=30`;
-      const anRes = await kino.fetch(anUrl).catch(() => null);
+      const kitsuSearchUrl = `https://kitsu.io/api/edge/anime?filter[text]=${q}&page[limit]=15`;
+      const [anRes, kitsuRes] = await Promise.all([
+        kino.fetch(anUrl).catch(() => null),
+        kino.fetch(kitsuSearchUrl).catch(() => null)
+      ]);
+      const resItems = [];
       if (anRes && anRes.ok) {
         const anData = anRes.json();
         const posts = anData && anData.data && Array.isArray(anData.data.posts) ? anData.data.posts : [];
-        return posts.map(toItem).filter(Boolean);
+        resItems.push(...posts.map(toItem).filter(Boolean));
       }
-      return [];
+      if (kitsuRes && kitsuRes.ok) {
+        const kd = kitsuRes.json();
+        const kitsuAnimes = kd && Array.isArray(kd.data) ? kd.data : [];
+        resItems.push(...kitsuAnimes.map(toKitsuItem).filter(Boolean));
+      }
+      return resItems;
     }
 
     if (query.within.startsWith("tvshows") || query.within.startsWith("novels")) {
@@ -625,12 +671,19 @@ export async function section({ tab } = {}) {
   }
 
   if (chosen === "anime") {
-    const [aNewRes, aPopRes, aP2Res] = await Promise.all([
+    const [aNewRes, aPopRes, aP2Res, kitsuTrendRes] = await Promise.all([
       kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=ID&order=desc&postType=animes&postsPerPage=25`).catch(() => null),
       kino.fetch(`${BASE_API}/listing/animes?page=1&orderBy=views&order=desc&postType=animes&postsPerPage=25`).catch(() => null),
-      kino.fetch(`${BASE_API}/listing/animes?page=2&orderBy=ID&order=desc&postType=animes&postsPerPage=25`).catch(() => null)
+      kino.fetch(`${BASE_API}/listing/animes?page=2&orderBy=ID&order=desc&postType=animes&postsPerPage=25`).catch(() => null),
+      kino.fetch("https://kitsu.io/api/edge/trending/anime").catch(() => null)
     ]);
     const aRows = [];
+    if (kitsuTrendRes && kitsuTrendRes.ok) {
+      const kd = kitsuTrendRes.json();
+      const ka = kd && Array.isArray(kd.data) ? kd.data : [];
+      const kitItems = ka.map(toKitsuItem).filter(Boolean);
+      if (kitItems.length > 0) aRows.push({ id: "sec-animes-trend", title: "Anime en tendencia mundial", ref: "kitsu:trending", genre: "anime", items: kitItems });
+    }
     if (aPopRes && aPopRes.ok) {
       const d = aPopRes.json();
       const p = d && d.data && Array.isArray(d.data.posts) ? d.data.posts : [];
@@ -821,7 +874,23 @@ export async function browse(ref, cursor) {
     };
   }
 
-  // 3. Explorar películas de una Categoría / Género específico
+  // 3. Explorar Anime en tendencia (Kitsu)
+  if (ref === "kitsu:trending") {
+    const offset = (page - 1) * 20;
+    const url = `https://kitsu.io/api/edge/anime?page[limit]=20&page[offset]=${offset}&sort=-userCount`;
+    const r = await kino.fetch(url);
+    if (!r.ok) throw kino.error("unavailable", `Error al cargar anime (${r.status})`);
+    const data = r.json();
+    const rawAnimes = data && Array.isArray(data.data) ? data.data : [];
+    const items = rawAnimes.map(toKitsuItem).filter(Boolean);
+    const hasNext = data && data.links && data.links.next;
+    return {
+      items,
+      next: hasNext ? String(page + 1) : undefined
+    };
+  }
+
+  // 4. Explorar películas de una Categoría / Género específico
   if (ref.startsWith("genre:")) {
     const genreId = parseInt(ref.split(":")[1], 10);
     if (!genreId) throw kino.error("not_found", "Categoría no encontrada");
@@ -893,7 +962,45 @@ export async function browse(ref, cursor) {
 export async function episodes(ref) {
   await null;
 
-  // 1. Filmografía del actor mostrada como episodios/títulos interactivos
+  // 1. Episodios de Anime Kitsu
+  if (ref.startsWith("kitsu:")) {
+    const kitsuId = ref.split(":")[1];
+    if (!kitsuId) throw kino.error("not_found", "Anime no encontrado");
+    const epUrl = `https://kitsu.io/api/edge/anime/${encodeURIComponent(kitsuId)}/episodes?page[limit]=100`;
+    const r = await kino.fetch(epUrl);
+    if (!r.ok) throw kino.error("unavailable", `Error al obtener episodios (${r.status})`);
+    const data = r.json();
+    const rawEps = data && Array.isArray(data.data) ? data.data : [];
+    if (rawEps.length === 0) throw kino.error("not_found", "No se encontraron episodios para este anime");
+
+    const epList = rawEps.map(e => {
+      const num = e.attributes?.number || 1;
+      const t = e.attributes?.canonicalTitle || `Episodio ${num}`;
+      return {
+        season: 1,
+        number: num,
+        ref: `kitsu_ep:${kitsuId}:${num}`,
+        title: t,
+        overview: e.attributes?.synopsis || undefined,
+        still: e.attributes?.thumbnail?.original || undefined
+      };
+    });
+
+    return {
+      episodes: epList,
+      seasons: [
+        {
+          id: `kitsu-${kitsuId}-s1`,
+          ref: `kitsu:${kitsuId}`,
+          title: "Temporada 1",
+          number: 1,
+          current: true
+        }
+      ]
+    };
+  }
+
+  // 2. Filmografía del actor mostrada como episodios/títulos interactivos
   if (ref.startsWith("actor:")) {
     const actorId = parseInt(ref.split(":")[1], 10);
     if (!actorId) throw kino.error("not_found", "Actor no encontrado");
@@ -1195,6 +1302,66 @@ export async function resolve(ref) {
   let postId = parts.pop();
   const type = parts[0] || "";
   if (!postId) throw kino.error("not_found", "ID de contenido no válido");
+
+  // Si el ref corresponde a un episodio de Kitsu (kitsu_ep:kitsuId:epNum)
+  if (ref.startsWith("kitsu_ep:")) {
+    const [, kitsuId, epNumStr] = ref.split(":");
+    const epNum = parseInt(epNumStr, 10) || 1;
+
+    // Obtener detalles y títulos del anime desde la API de Kitsu
+    const kitsuRes = await kino.fetch(`https://kitsu.io/api/edge/anime/${encodeURIComponent(kitsuId)}`);
+    if (!kitsuRes.ok) throw kino.error("unavailable", `Error al conectar con Kitsu (${kitsuRes.status})`);
+    const kitsuData = kitsuRes.json();
+    const attr = kitsuData && kitsuData.data ? kitsuData.data.attributes : {};
+    const titles = attr.titles || {};
+    const candidates = [
+      attr.canonicalTitle,
+      titles.en,
+      titles.en_jp,
+      titles.en_us,
+      titles.ja_jp
+    ].filter(Boolean);
+
+    let matchedLaMoviePost = null;
+    for (const titleCandidate of candidates) {
+      try {
+        const sRes = await kino.fetch(`${BASE_API}/search?q=${encodeURIComponent(titleCandidate)}&postType=animes`);
+        if (sRes.ok) {
+          const sData = sRes.json();
+          const posts = sData && sData.data && Array.isArray(sData.data.posts) ? sData.data.posts : [];
+          if (posts.length > 0) {
+            matchedLaMoviePost = posts[0];
+            break;
+          }
+        }
+      } catch (_) {
+        // Seguir probando candidatos
+      }
+    }
+
+    if (!matchedLaMoviePost) {
+      throw kino.error("not_found", "Anime no disponible en servidores de video", {
+        userMessage: `El anime "${attr.canonicalTitle || "solicitado"}" aún no cuenta con servidores de video compatibles en el catálogo latino.`
+      });
+    }
+
+    // Buscar el episodio específico en LaMovie
+    const epListUrl = `${BASE_API}/single/episodes/list?_id=${encodeURIComponent(matchedLaMoviePost._id)}&season=1&page=1&postsPerPage=100`;
+    const epListRes = await kino.fetch(epListUrl);
+    if (!epListRes.ok) {
+      throw kino.error("unavailable", `Error al buscar episodios en el servidor (${epListRes.status})`);
+    }
+
+    const epListData = epListRes.json();
+    const posts = epListData && epListData.data && Array.isArray(epListData.data.posts) ? epListData.data.posts : [];
+    const matchedEp = posts.find(p => p.episode_number === epNum) || posts[epNum - 1] || posts[0];
+
+    if (!matchedEp || !matchedEp._id) {
+      throw kino.error("not_found", `Episodio ${epNum} no disponible en streaming`);
+    }
+
+    postId = String(matchedEp._id);
+  }
 
   // Si se solicita reproducir una serie directamente (ej. desde una colección de series),
   // se obtiene automáticamente su primer episodio
