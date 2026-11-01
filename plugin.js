@@ -310,8 +310,10 @@ export async function search(query) {
     }
   }
 
-  const [searchRes, actorsRes] = await Promise.all([
+  // Búsqueda global (sin contexto específico o en la barra principal)
+  const [searchRes, kitsuRes, actorsRes] = await Promise.all([
     kino.fetch(`${BASE_API}/search?q=${q}&postType=any&postsPerPage=40`).catch(() => null),
+    kino.fetch(`https://kitsu.io/api/edge/anime?filter[text]=${q}&page[limit]=15`).catch(() => null),
     kino.fetch(`${BASE_API}/listing/tax/cast?page=1&orderBy=latest&order=desc&postsPerPage=20`).catch(() => null)
   ]);
 
@@ -321,6 +323,19 @@ export async function search(query) {
     const res = searchRes.json();
     const rawPosts = res && res.data && Array.isArray(res.data.posts) ? res.data.posts : [];
     items.push(...rawPosts.map(toItem).filter(Boolean));
+  }
+
+  // Integrar resultados del catálogo global de anime (Kitsu)
+  if (kitsuRes && kitsuRes.ok) {
+    const kd = kitsuRes.json();
+    const kitsuAnimes = kd && Array.isArray(kd.data) ? kd.data : [];
+    for (const ka of kitsuAnimes) {
+      const ki = toKitsuItem(ka);
+      // Evitar duplicar si ya está en los resultados de LaMovie con el mismo título
+      if (ki && !items.some(it => it.title && it.title.toLowerCase() === ki.title.toLowerCase())) {
+        items.push(ki);
+      }
+    }
   }
 
   // Si coincide con actores destacados
