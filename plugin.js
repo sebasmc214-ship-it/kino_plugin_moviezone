@@ -966,18 +966,43 @@ export async function episodes(ref) {
   if (ref.startsWith("kitsu:")) {
     const kitsuId = ref.split(":")[1];
     if (!kitsuId) throw kino.error("not_found", "Anime no encontrado");
-    const epUrl = `https://kitsu.io/api/edge/anime/${encodeURIComponent(kitsuId)}/episodes?page[limit]=100`;
-    const r = await kino.fetch(epUrl);
-    if (!r.ok) throw kino.error("unavailable", `Error al obtener episodios (${r.status})`);
-    const data = r.json();
-    const rawEps = data && Array.isArray(data.data) ? data.data : [];
+
+    // Consultar detalles del anime y relaciones en paralelo
+    const [animeRes, relRes] = await Promise.all([
+      kino.fetch(`https://kitsu.io/api/edge/anime/${encodeURIComponent(kitsuId)}`),
+      kino.fetch(`https://kitsu.io/api/edge/anime/${encodeURIComponent(kitsuId)}/media-relationships?include=destination`).catch(() => null)
+    ]);
+
+    if (!animeRes.ok) throw kino.error("unavailable", `Error al obtener anime (${animeRes.status})`);
+    const animeData = animeRes.json();
+    const attr = animeData && animeData.data ? animeData.data.attributes : {};
+    const totalEps = Math.min(attr.episodeCount || 20, 200);
+
+    // Kitsu permite máximo 20 episodios por página. Obtenemos en lotes paralelos de 20
+    const offsets = [];
+    for (let offset = 0; offset < totalEps; offset += 20) {
+      offsets.push(offset);
+    }
+    if (offsets.length === 0) offsets.push(0);
+
+    const batchPromises = offsets.map(offset =>
+      kino.fetch(`https://kitsu.io/api/edge/anime/${encodeURIComponent(kitsuId)}/episodes?page[limit]=20&page[offset]=${offset}`).then(r => r.ok ? r.json() : null).catch(() => null)
+    );
+    const batchResults = await Promise.all(batchPromises);
+    const rawEps = [];
+    for (const b of batchResults) {
+      if (b && Array.isArray(b.data)) {
+        rawEps.push(...b.data);
+      }
+    }
+
     if (rawEps.length === 0) throw kino.error("not_found", "No se encontraron episodios para este anime");
 
     const epList = rawEps.map(e => {
       const num = e.attributes?.number || 1;
       const t = e.attributes?.canonicalTitle || `Episodio ${num}`;
       return {
-        season: 1,
+        season: e.attributes?.seasonNumber || 1,
         number: num,
         ref: `kitsu_ep:${kitsuId}:${num}`,
         title: t,
@@ -986,17 +1011,50 @@ export async function episodes(ref) {
       };
     });
 
+    // Construir lista de temporadas y secuelas/spin-offs relacionados
+    const seasonsList = [
+      {
+        id: `kitsu-${kitsuId}-s1`,
+        ref: `kitsu:${kitsuId}`,
+        title: totalEps > 20 ? `Temporada 1 (${totalEps} eps)` : "Temporada 1",
+        number: 1,
+        current: true
+      }
+    ];
+
+    if (relRes && relRes.ok) {
+      try {
+        const relData = relRes.json();
+        const relItems = Array.isArray(relData.data) ? relData.data : [];
+        const included = Array.isArray(relData.included) ? relData.included : [];
+
+        for (const rel of relItems) {
+          const destId = rel.relationships?.destination?.data?.id;
+          const dest = included.find(inc => inc.id === destId && inc.type === "anime");
+          if (dest && dest.id && dest.id !== kitsuId) {
+            const role = rel.attributes?.role;
+            let prefix = "📺";
+            if (role === "sequel") prefix = "⏭️ Secuela:";
+            else if (role === "prequel") prefix = "⏮️ Precuela:";
+            else if (role === "side_story") prefix = "🎬 Película/Extra:";
+            else prefix = "✨";
+
+            const destTitle = dest.attributes?.canonicalTitle || "Temporada relacionada";
+            seasonsList.push({
+              id: `kitsu-${dest.id}`,
+              ref: `kitsu:${dest.id}`,
+              title: `${prefix} ${destTitle}`
+            });
+          }
+        }
+      } catch (_) {
+        // Ignorar si falla el procesamiento de relaciones secundarias
+      }
+    }
+
     return {
       episodes: epList,
-      seasons: [
-        {
-          id: `kitsu-${kitsuId}-s1`,
-          ref: `kitsu:${kitsuId}`,
-          title: "Temporada 1",
-          number: 1,
-          current: true
-        }
-      ]
+      seasons: seasonsList
     };
   }
 
@@ -1314,7 +1372,7 @@ export async function resolve(ref) {
     const kitsuData = kitsuRes.json();
     const attr = kitsuData && kitsuData.data ? kitsuData.data.attributes : {};
     const titles = attr.titles || {};
-    const candidates = [
+    const rawCandidates = [
       attr.canonicalTitle,
       titles.en,
       titles.en_jp,
@@ -1322,21 +1380,52 @@ export async function resolve(ref) {
       titles.ja_jp
     ].filter(Boolean);
 
+    // Generar variantes y términos limpios (ej. quitar subtítulos, "Book 1", etc.)
+    const candidates = [];
+    for (const t of rawCandidates) {
+      if (!candidates.includes(t)) candidates.push(t);
+      const colonPrefix = t.split(":")[0].trim();
+      if (colonPrefix && !candidates.includes(colonPrefix)) candidates.push(colonPrefix);
+      const withoutSub = t.replace(/\s*(Book|Season|Temporada|Parte|Part)\s*\d+.*$/i, "").replace(/:\s*[^:]+$/, "").trim();
+      if (withoutSub && !candidates.includes(withoutSub)) candidates.push(withoutSub);
+    }
+
     let matchedLaMoviePost = null;
+    const postTypesToSearch = ["animes", "tvshows"];
+
+    // 1. Intentar coincidencia exacta o por trailer de YouTube en animes y tvshows
     for (const titleCandidate of candidates) {
-      try {
-        const sRes = await kino.fetch(`${BASE_API}/search?q=${encodeURIComponent(titleCandidate)}&postType=animes`);
-        if (sRes.ok) {
-          const sData = sRes.json();
-          const posts = sData && sData.data && Array.isArray(sData.data.posts) ? sData.data.posts : [];
-          if (posts.length > 0) {
-            matchedLaMoviePost = posts[0];
-            break;
+      for (const pt of postTypesToSearch) {
+        try {
+          const sRes = await kino.fetch(`${BASE_API}/search?q=${encodeURIComponent(titleCandidate)}&postType=${pt}`);
+          if (sRes.ok) {
+            const sData = sRes.json();
+            const posts = sData && sData.data && Array.isArray(sData.data.posts) ? sData.data.posts : [];
+            if (posts.length > 0) {
+              // Si coincide el trailer de YouTube de Kitsu con el del post en LaMovie
+              if (attr.youtubeVideoId) {
+                const trailerMatch = posts.find(p => p.trailer === attr.youtubeVideoId);
+                if (trailerMatch) {
+                  matchedLaMoviePost = trailerMatch;
+                  break;
+                }
+              }
+              // Si no, verificar si el post contiene palabras clave del título original
+              if (!matchedLaMoviePost) {
+                const keywordMatch = posts.find(p => {
+                  const full = `${p.title || ""} ${p.original_title || ""}`.toLowerCase();
+                  return rawCandidates.some(c => full.includes(c.toLowerCase()));
+                });
+                matchedLaMoviePost = keywordMatch || posts[0];
+                if (matchedLaMoviePost && !attr.youtubeVideoId) break;
+              }
+            }
           }
+        } catch (_) {
+          // Seguir probando candidatos
         }
-      } catch (_) {
-        // Seguir probando candidatos
       }
+      if (matchedLaMoviePost) break;
     }
 
     if (!matchedLaMoviePost) {
